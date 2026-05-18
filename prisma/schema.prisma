@@ -1,0 +1,153 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  role      String   @default("staff_viewer") // super_admin, principal, accountant, bursar, staff_viewer
+  avatar    String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payments        Payment[]
+  approvedExpenses Expense[] @relation("ApprovedExpenses")
+  createdExpenses  Expense[] @relation("CreatedExpenses")
+  auditLogs       AuditLog[]
+}
+
+model AcademicYear {
+  id        String   @id @default(cuid())
+  name      String   @unique // e.g., "2024/2025"
+  startDate DateTime
+  endDate   DateTime
+  active    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  semesters Semester[]
+  students  Student[]
+}
+
+model Semester {
+  id            String   @id @default(cuid())
+  name          String   // e.g., "Semester 1", "Semester 2"
+  academicYearId String
+  startDate     DateTime
+  endDate       DateTime
+  active        Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+  students     Student[]
+}
+
+model Course {
+  id           String   @id @default(cuid())
+  name         String   @unique // e.g., "Business Administration", "Accounting"
+  code         String   @unique // e.g., "BBA", "ACC"
+  programType  String   // certificate, diploma
+  duration     Int      // in semesters
+  tuitionFee   Float    // per semester
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  students Student[]
+}
+
+model Student {
+  id             String   @id @default(cuid())
+  studentId      String   @unique // e.g., "MIBAM/2024/001"
+  firstName      String
+  lastName       String
+  gender         String   // male, female
+  dateOfBirth    DateTime?
+  courseId       String
+  programType    String   // certificate, diploma
+  intake         String   // e.g., "January 2024", "August 2024"
+  academicYearId String
+  semesterId     String?
+  phoneNumber    String?
+  email          String?
+  guardianName   String?
+  guardianContact String?
+  address        String?
+  photo          String?  // URL to photo
+  status         String   @default("active") // active, suspended, graduated, withdrawn
+  enrolledAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  course       Course       @relation(fields: [courseId], references: [id])
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+  semester     Semester?    @relation(fields: [semesterId], references: [id])
+  payments     Payment[]
+}
+
+model Payment {
+  id            String   @id @default(cuid())
+  receiptNumber String   @unique // e.g., "RCT-2024-0001"
+  studentId     String
+  amount        Float
+  paymentMethod String   // cash, bank, mobile_money
+  reference     String?  // bank ref / mobile money ref
+  semester      String?  // which semester payment is for
+  academicYear  String?  // which academic year payment is for
+  notes         String?
+  receivedBy    String   // user id
+  receivedAt    DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  student    Student  @relation(fields: [studentId], references: [id])
+  receivedByUser User  @relation(fields: [receivedBy], references: [id])
+}
+
+model Expense {
+  id            String   @id @default(cuid())
+  title         String
+  amount        Float
+  category      String   // salaries, utilities, maintenance, stationery, fuel, internet, marketing, rent, miscellaneous
+  paymentMethod String   // cash, bank, mobile_money
+  description   String?
+  receiptImage  String?  // URL to receipt image
+  date          DateTime
+  approvedBy    String?  // user id
+  status        String   @default("pending") // pending, approved, rejected
+  createdBy     String   // user id
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  approver    User?    @relation("ApprovedExpenses", fields: [approvedBy], references: [id])
+  creator     User     @relation("CreatedExpenses", fields: [createdBy], references: [id])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String   // e.g., "CREATE_STUDENT", "RECORD_PAYMENT", "DELETE_EXPENSE"
+  entity    String   // e.g., "student", "payment", "expense"
+  entityId  String?
+  details   String?  // JSON string with details
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String   // JSON string for complex values
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

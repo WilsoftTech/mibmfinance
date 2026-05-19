@@ -15,6 +15,7 @@ import {
   Building2,
   Smartphone,
   Calendar,
+  CalendarIcon,
   X,
   CheckCircle2,
   UserCircle,
@@ -24,11 +25,15 @@ import {
   Wallet,
   Clock,
   Loader2,
+  Filter,
+  FileSpreadsheet,
+  FileDown,
 } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
-import { formatCurrency, formatDate, formatDateTime } from '@/lib/utils'
+import { formatCurrency, formatDate, formatDateTime, cn } from '@/lib/utils'
 import type { Payment, Student, PaymentMethod, PaginatedResponse } from '@/lib/types'
 import { toast } from 'sonner'
+import { exportToExcel, exportToPDF, exportToCSV, generatePDFTable } from '@/lib/export-utils'
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -62,6 +67,15 @@ import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Calendar as CalendarComponent } from '@/components/ui/calendar'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 // ============================================================
 // Constants
@@ -1120,6 +1134,12 @@ export function PaymentsModule() {
   const [endDate, setEndDate] = useState('')
   const [academicYearFilter, setAcademicYearFilter] = useState<string>('all')
   const [academicYears, setAcademicYears] = useState<{ id: string; name: string }[]>([])
+  const [showFilters, setShowFilters] = useState(false)
+  const [minAmount, setMinAmount] = useState('')
+  const [maxAmount, setMaxAmount] = useState('')
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
+  const [isExporting, setIsExporting] = useState(false)
 
   // Dialog state
   const [recordDialogOpen, setRecordDialogOpen] = useState(false)
@@ -1145,8 +1165,11 @@ export function PaymentsModule() {
       params.set('limit', String(PAGE_SIZE))
       if (searchQuery) params.set('q', searchQuery)
       if (methodFilter && methodFilter !== 'all') params.set('paymentMethod', methodFilter)
-      if (startDate) params.set('startDate', startDate)
-      if (endDate) params.set('endDate', endDate)
+      if (startDate || dateFrom) params.set('startDate', startDate || (dateFrom ? dateFrom.toISOString() : ''))
+      if (endDate || dateTo) params.set('endDate', endDate || (dateTo ? dateTo.toISOString() : ''))
+      if (academicYearFilter && academicYearFilter !== 'all') params.set('academicYearId', academicYearFilter)
+      if (minAmount) params.set('minAmount', minAmount)
+      if (maxAmount) params.set('maxAmount', maxAmount)
 
       const res = await fetch(`/api/payments?${params.toString()}`)
       const data = await res.json()
@@ -1160,7 +1183,7 @@ export function PaymentsModule() {
     } finally {
       setIsLoading(false)
     }
-  }, [page, searchQuery, methodFilter, startDate, endDate])
+  }, [page, searchQuery, methodFilter, startDate, endDate, academicYearFilter, minAmount, maxAmount, dateFrom, dateTo])
 
   useEffect(() => {
     fetchPayments()
@@ -1169,9 +1192,154 @@ export function PaymentsModule() {
   // Reset page when filters change
   useEffect(() => {
     setPage(1)
-  }, [searchQuery, methodFilter, startDate, endDate])
+  }, [searchQuery, methodFilter, startDate, endDate, academicYearFilter, minAmount, maxAmount, dateFrom, dateTo])
 
   const totalPages = Math.ceil(totalPayments / PAGE_SIZE)
+
+  // Count active filters for badge
+  const activeFilterCount = [
+    methodFilter !== 'all',
+    !!(startDate || dateFrom),
+    !!(endDate || dateTo),
+    academicYearFilter !== 'all',
+    !!minAmount,
+    !!maxAmount,
+  ].filter(Boolean).length
+
+  const hasActiveFilters = activeFilterCount > 0 || !!searchQuery
+
+  // Clear all filters
+  const clearFilters = useCallback(() => {
+    setSearchQuery('')
+    setMethodFilter('all')
+    setStartDate('')
+    setEndDate('')
+    setAcademicYearFilter('all')
+    setMinAmount('')
+    setMaxAmount('')
+    setDateFrom(undefined)
+    setDateTo(undefined)
+    setPage(1)
+  }, [])
+
+  // Export: fetch ALL filtered payments for export
+  const fetchAllPaymentsForExport = useCallback(async (): Promise<PaymentWithStudent[]> => {
+    try {
+      const params = new URLSearchParams()
+      params.set('limit', '10000') // Fetch all
+      if (searchQuery) params.set('q', searchQuery)
+      if (methodFilter && methodFilter !== 'all') params.set('paymentMethod', methodFilter)
+      if (startDate || dateFrom) params.set('startDate', startDate || (dateFrom ? dateFrom.toISOString() : ''))
+      if (endDate || dateTo) params.set('endDate', endDate || (dateTo ? dateTo.toISOString() : ''))
+      if (academicYearFilter && academicYearFilter !== 'all') params.set('academicYearId', academicYearFilter)
+      if (minAmount) params.set('minAmount', minAmount)
+      if (maxAmount) params.set('maxAmount', maxAmount)
+
+      const res = await fetch(`/api/payments?${params.toString()}`)
+      const data = await res.json()
+      return data.data || []
+    } catch {
+      toast.error('Failed to fetch payments for export')
+      return []
+    }
+  }, [searchQuery, methodFilter, startDate, endDate, academicYearFilter, minAmount, maxAmount, dateFrom, dateTo])
+
+  // Handle Excel export
+  const handleExportExcel = useCallback(async () => {
+    setIsExporting(true)
+    try {
+      const allPayments = await fetchAllPaymentsForExport()
+      if (allPayments.length === 0) return
+
+      const exportData = allPayments.map((p) => ({
+        receiptNumber: p.receiptNumber,
+        studentName: `${p.student.firstName} ${p.student.lastName}`,
+        studentId: p.student.studentId,
+        course: p.student.course?.name || 'N/A',
+        amount: p.amount,
+        paymentMethod: PAYMENT_METHOD_CONFIG[p.paymentMethod as PaymentMethod]?.label || p.paymentMethod,
+        reference: p.reference || '',
+        semester: p.semester || '',
+        academicYear: p.academicYear || '',
+        receivedAt: p.receivedAt,
+        receivedBy: p.receivedByUser?.name || 'N/A',
+        notes: p.notes || '',
+      }))
+
+      const timestamp = new Date().toISOString().slice(0, 10)
+      exportToExcel(exportData, `MIBAM_Payments_${timestamp}`, 'Payments')
+    } finally {
+      setIsExporting(false)
+    }
+  }, [fetchAllPaymentsForExport])
+
+  // Handle PDF export
+  const handleExportPDF = useCallback(async () => {
+    setIsExporting(true)
+    try {
+      const allPayments = await fetchAllPaymentsForExport()
+      if (allPayments.length === 0) return
+
+      const tableHtml = generatePDFTable(allPayments, {
+        headers: [
+          { key: 'receiptNumber', label: 'Receipt #' },
+          { key: 'studentName', label: 'Student Name' },
+          { key: 'amount', label: 'Amount (UGX)', align: 'right' },
+          { key: 'paymentMethod', label: 'Method' },
+          { key: 'reference', label: 'Reference' },
+          { key: 'receivedAt', label: 'Date' },
+        ],
+        currencyColumns: ['amount'],
+        dateColumns: ['receivedAt'],
+      })
+
+      const timestamp = new Date().toISOString().slice(0, 10)
+      const totalAmount = allPayments.reduce((sum, p) => sum + p.amount, 0)
+      const summaryHtml = `
+        <div style="display: flex; justify-content: space-between; margin-bottom: 15px; padding: 10px; background: #f0fdfa; border-radius: 6px; border: 1px solid #99f6e4;">
+          <div><strong>Total Payments:</strong> ${allPayments.length}</div>
+          <div><strong>Total Amount:</strong> UGX ${totalAmount.toLocaleString('en-US')}</div>
+        </div>
+      `
+
+      exportToPDF(
+        'Payments Report',
+        summaryHtml + tableHtml,
+        `MIBAM_Payments_${timestamp}`
+      )
+    } finally {
+      setIsExporting(false)
+    }
+  }, [fetchAllPaymentsForExport])
+
+  // Handle CSV export
+  const handleExportCSV = useCallback(async () => {
+    setIsExporting(true)
+    try {
+      const allPayments = await fetchAllPaymentsForExport()
+      if (allPayments.length === 0) return
+
+      const exportData = allPayments.map((p) => ({
+        receiptNumber: p.receiptNumber,
+        studentName: `${p.student.firstName} ${p.student.lastName}`,
+        studentId: p.student.studentId,
+        course: p.student.course?.name || 'N/A',
+        amount: p.amount,
+        paymentMethod: PAYMENT_METHOD_CONFIG[p.paymentMethod as PaymentMethod]?.label || p.paymentMethod,
+        reference: p.reference || '',
+        semester: p.semester || '',
+        academicYear: p.academicYear || '',
+        receivedAt: p.receivedAt,
+        receivedBy: p.receivedByUser?.name || 'N/A',
+        notes: p.notes || '',
+      }))
+
+      const timestamp = new Date().toISOString().slice(0, 10)
+      exportToCSV(exportData, `MIBAM_Payments_${timestamp}`)
+    } finally {
+      setIsExporting(false)
+    }
+  }, [fetchAllPaymentsForExport])
 
   // View receipt
   const handleViewReceipt = async (paymentId: string) => {
@@ -1198,9 +1366,6 @@ export function PaymentsModule() {
     fetchPayments()
   }
 
-  const hasActiveFilters =
-    searchQuery || methodFilter !== 'all' || startDate || endDate || academicYearFilter !== 'all'
-
   return (
     <div className="space-y-5">
       {/* Page Header */}
@@ -1211,13 +1376,47 @@ export function PaymentsModule() {
             Record, track, and manage student payments and receipts.
           </p>
         </div>
-        <Button
-          onClick={() => setRecordDialogOpen(true)}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/20"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Record Payment
-        </Button>
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isExporting}
+                className="border-teal-200 dark:border-teal-800"
+              >
+                {isExporting ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" />
+                )}
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleExportExcel} disabled={isExporting}>
+                <FileSpreadsheet className="h-4 w-4 mr-2 text-emerald-600" />
+                Export to Excel (.xls)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportPDF} disabled={isExporting}>
+                <FileDown className="h-4 w-4 mr-2 text-red-500" />
+                Export to PDF
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleExportCSV} disabled={isExporting}>
+                <FileText className="h-4 w-4 mr-2 text-teal-600" />
+                Export to CSV
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            onClick={() => setRecordDialogOpen(true)}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/20"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Record Payment
+          </Button>
+        </div>
       </div>
 
       {/* Statistics Bar */}
@@ -1226,99 +1425,185 @@ export function PaymentsModule() {
       {/* Filters */}
       <Card>
         <CardContent className="p-4">
-          <div className="flex flex-col lg:flex-row gap-3">
-            {/* Search */}
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by receipt # or student name..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-
-            {/* Method Filter */}
-            <Select value={methodFilter} onValueChange={setMethodFilter}>
-              <SelectTrigger className="w-full lg:w-[170px]">
-                <SelectValue placeholder="Payment Method" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Methods</SelectItem>
-                <SelectItem value="cash">
-                  <span className="flex items-center gap-2">
-                    <Banknote className="h-3.5 w-3.5 text-amber-600" />
-                    Cash
-                  </span>
-                </SelectItem>
-                <SelectItem value="bank">
-                  <span className="flex items-center gap-2">
-                    <Building2 className="h-3.5 w-3.5 text-teal-600" />
-                    Bank
-                  </span>
-                </SelectItem>
-                <SelectItem value="mobile_money">
-                  <span className="flex items-center gap-2">
-                    <Smartphone className="h-3.5 w-3.5 text-emerald-600" />
-                    Mobile Money
-                  </span>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-
-            {/* Date Range */}
-            <div className="flex items-center gap-2">
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full lg:w-[150px]"
-                placeholder="From"
-              />
-              <span className="text-muted-foreground text-xs shrink-0">to</span>
-              <Input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full lg:w-[150px]"
-                placeholder="To"
-              />
-            </div>
-
-            {/* Academic Year Filter */}
-            <Select value={academicYearFilter} onValueChange={setAcademicYearFilter}>
-              <SelectTrigger className="w-full lg:w-[170px]">
-                <SelectValue placeholder="Academic Year" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Years</SelectItem>
-                {academicYears.map((ay) => (
-                  <SelectItem key={ay.id} value={ay.id}>
-                    {ay.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Clear Filters */}
-            {hasActiveFilters && (
+          {/* Main row: Search + Filter Toggle + Info */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2 flex-1 w-full sm:w-auto">
+              <div className="relative flex-1 sm:max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by receipt # or student name..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
               <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setSearchQuery('')
-                  setMethodFilter('all')
-                  setStartDate('')
-                  setEndDate('')
-                  setAcademicYearFilter('all')
-                }}
-                className="shrink-0 text-muted-foreground"
+                variant={showFilters ? 'default' : 'outline'}
+                size="icon"
+                onClick={() => setShowFilters(!showFilters)}
+                className={cn('relative', showFilters && 'bg-emerald-600 hover:bg-emerald-700 text-white')}
               >
-                <X className="h-3.5 w-3.5 mr-1" />
-                Clear
+                <Filter className="h-4 w-4" />
+                {activeFilterCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-[10px] font-bold text-white flex items-center justify-center">
+                    {activeFilterCount}
+                  </span>
+                )}
               </Button>
-            )}
+            </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <CreditCard className="h-4 w-4" />
+              <span>Total: <strong className="text-foreground">{totalPayments}</strong> payments</span>
+            </div>
           </div>
+
+          {/* Expandable Filter Panel */}
+          <AnimatePresence>
+            {showFilters && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-4">
+                  {/* Payment Method Filter */}
+                  <Select value={methodFilter} onValueChange={setMethodFilter}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="All Methods" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Methods</SelectItem>
+                      <SelectItem value="cash">
+                        <span className="flex items-center gap-2">
+                          <Banknote className="h-3.5 w-3.5 text-amber-600" />
+                          Cash
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="bank">
+                        <span className="flex items-center gap-2">
+                          <Building2 className="h-3.5 w-3.5 text-teal-600" />
+                          Bank
+                        </span>
+                      </SelectItem>
+                      <SelectItem value="mobile_money">
+                        <span className="flex items-center gap-2">
+                          <Smartphone className="h-3.5 w-3.5 text-emerald-600" />
+                          Mobile Money
+                        </span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {/* Academic Year Filter */}
+                  <Select value={academicYearFilter} onValueChange={setAcademicYearFilter}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="All Years" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Years</SelectItem>
+                      {academicYears.map((ay) => (
+                        <SelectItem key={ay.id} value={ay.id}>
+                          {ay.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  {/* Date From - Calendar Picker */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          'justify-start text-left font-normal',
+                          !dateFrom && 'text-muted-foreground'
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {dateFrom ? formatDate(dateFrom) : 'From date'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <CalendarComponent
+                        mode="single"
+                        selected={dateFrom}
+                        onSelect={(d) => {
+                          setDateFrom(d)
+                          if (d) setStartDate(d.toISOString().slice(0, 10))
+                          else setStartDate('')
+                        }}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+
+                  {/* Date To - Calendar Picker */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          'justify-start text-left font-normal',
+                          !dateTo && 'text-muted-foreground'
+                        )}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {dateTo ? formatDate(dateTo) : 'To date'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <CalendarComponent
+                        mode="single"
+                        selected={dateTo}
+                        onSelect={(d) => {
+                          setDateTo(d)
+                          if (d) setEndDate(d.toISOString().slice(0, 10))
+                          else setEndDate('')
+                        }}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* Amount Range Row */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Min Amount (UGX)</Label>
+                    <Input
+                      type="number"
+                      placeholder="0"
+                      value={minAmount}
+                      onChange={(e) => setMinAmount(e.target.value)}
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Max Amount (UGX)</Label>
+                    <Input
+                      type="number"
+                      placeholder="No limit"
+                      value={maxAmount}
+                      onChange={(e) => setMaxAmount(e.target.value)}
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* Clear Filters */}
+                {hasActiveFilters && (
+                  <div className="flex justify-end mt-3">
+                    <Button variant="ghost" size="sm" onClick={clearFilters}>
+                      <X className="h-4 w-4 mr-1" />
+                      Clear all filters
+                    </Button>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </CardContent>
       </Card>
 

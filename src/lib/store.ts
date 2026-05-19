@@ -5,6 +5,8 @@ interface AppState {
   // Navigation
   currentPage: PageType
   setCurrentPage: (page: PageType) => void
+  recentPages: PageType[]
+  addToRecentPages: (page: PageType) => void
 
   // Sidebar
   sidebarCollapsed: boolean
@@ -23,15 +25,37 @@ interface AppState {
   searchOpen: boolean
   setSearchOpen: (open: boolean) => void
 
+  // Command Palette
+  commandPaletteOpen: boolean
+  setCommandPaletteOpen: (open: boolean) => void
+  toggleCommandPalette: () => void
+
   // Notifications
   notifications: number
   setNotifications: (count: number) => void
+
+  // Quick Stats
+  quickStats: {
+    totalStudents: number
+    todayCollections: number
+    pendingExpenses: number
+    netBalance: number
+  }
+  setQuickStats: (stats: AppState['quickStats']) => void
 }
 
 export const useAppStore = create<AppState>((set) => ({
   // Navigation
   currentPage: 'dashboard',
-  setCurrentPage: (page) => set({ currentPage: page }),
+  setCurrentPage: (page) => set((state) => {
+    const updatedRecent = [page, ...state.recentPages.filter(p => p !== page)].slice(0, 5)
+    return { currentPage: page, recentPages: updatedRecent }
+  }),
+  recentPages: [],
+  addToRecentPages: (page) => set((state) => {
+    const updatedRecent = [page, ...state.recentPages.filter(p => p !== page)].slice(0, 5)
+    return { recentPages: updatedRecent }
+  }),
 
   // Sidebar
   sidebarCollapsed: false,
@@ -59,7 +83,21 @@ export const useAppStore = create<AppState>((set) => ({
   searchOpen: false,
   setSearchOpen: (open) => set({ searchOpen: open }),
 
+  // Command Palette
+  commandPaletteOpen: false,
+  setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
+  toggleCommandPalette: () => set((state) => ({ commandPaletteOpen: !state.commandPaletteOpen })),
+
   // Notifications
   notifications: 3,
   setNotifications: (count) => set({ notifications: count }),
+
+  // Quick Stats
+  quickStats: {
+    totalStudents: 0,
+    todayCollections: 0,
+    pendingExpenses: 0,
+    netBalance: 0,
+  },
+  setQuickStats: (stats) => set({ quickStats: stats }),
 }))

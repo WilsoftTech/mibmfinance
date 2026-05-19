@@ -24,9 +24,11 @@ import {
   DropdownMenuTrigger,
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { getInitials } from '@/lib/utils'
+import { NotificationPanel } from '@/components/layout/notification-panel'
 
 export function Header() {
   const { currentUser, setMobileSidebarOpen, notifications, setCurrentPage, logout } = useAppStore()
@@ -88,20 +90,27 @@ export function Header() {
             <span className="sr-only">Toggle theme</span>
           </Button>
 
-          {/* Notifications */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9 text-muted-foreground hover:text-foreground relative"
-          >
-            <Bell className="h-4 w-4" />
-            {notifications > 0 && (
-              <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-[9px] font-bold text-white">
-                {notifications}
-              </span>
-            )}
-            <span className="sr-only">Notifications</span>
-          </Button>
+          {/* Notifications with Popover */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 text-muted-foreground hover:text-foreground relative"
+              >
+                <Bell className="h-4 w-4" />
+                {notifications > 0 && (
+                  <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-[9px] font-bold text-white">
+                    {notifications}
+                  </span>
+                )}
+                <span className="sr-only">Notifications</span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end" sideOffset={8}>
+              <NotificationPanel />
+            </PopoverContent>
+          </Popover>
 
           {/* User Menu */}
           <DropdownMenu>

@@ -27,6 +27,10 @@ import {
   Minus,
   CheckCircle2,
   XCircle,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  File,
 } from 'lucide-react'
 import {
   AreaChart,
@@ -54,6 +58,14 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart'
 import { toast } from 'sonner'
+import { exportToExcel, exportToCSV, exportToPDF } from '@/lib/export-utils'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 // ============================================================
 // Types
@@ -306,9 +318,12 @@ function ChartSkeleton() {
 interface DateSelectorProps {
   selectedDate: Date
   onDateChange: (date: Date) => void
+  onExportPDF?: () => void
+  onExportExcel?: () => void
+  onExportCSV?: () => void
 }
 
-function DateSelector({ selectedDate, onDateChange }: DateSelectorProps) {
+function DateSelector({ selectedDate, onDateChange, onExportPDF, onExportExcel, onExportCSV }: DateSelectorProps) {
   const goToPrevious = () => onDateChange(subDays(selectedDate, 1))
   const goToNext = () => onDateChange(addDays(selectedDate, 1))
   const goToToday = () => onDateChange(new Date())
@@ -323,6 +338,29 @@ function DateSelector({ selectedDate, onDateChange }: DateSelectorProps) {
         <p className="text-muted-foreground text-sm">Track daily cash flow and transactions</p>
       </div>
       <div className="flex items-center gap-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs">
+              <Download className="h-3.5 w-3.5" />
+              Export
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={onExportPDF} disabled={!onExportPDF}>
+              <FileText className="mr-2 h-4 w-4 text-rose-600" />
+              Export to PDF
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onExportExcel} disabled={!onExportExcel}>
+              <FileSpreadsheet className="mr-2 h-4 w-4 text-emerald-600" />
+              Export to Excel
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onExportCSV} disabled={!onExportCSV}>
+              <File className="mr-2 h-4 w-4 text-amber-600" />
+              Export to CSV
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Button
           variant="outline"
           size="sm"
@@ -1376,13 +1414,122 @@ export function CashbookModule() {
     setSelectedDate(date)
   }
 
+  // Export handlers
+  const buildTimelineExport = () => {
+    if (!data) return []
+    const allEntries: (IncomeTransaction & ExpenseTransaction & { type: string })[] = [
+      ...data.income.transactions.map((t) => ({ ...t, type: 'Income' })),
+      ...data.expenses.transactions.map((t) => ({ ...t, type: 'Expense' })),
+    ]
+    allEntries.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+    return allEntries
+  }
+
+  const handleExportPDF = () => {
+    if (!data) { toast.error('No data to export'); return }
+    const timeline = buildTimelineExport()
+    const exportData = timeline.map((entry) => {
+      const isIncome = entry.type === 'Income'
+      return {
+        time: formatTime(entry.time),
+        description: isIncome ? (entry as IncomeTransaction).studentName : (entry as ExpenseTransaction).title,
+        type: entry.type,
+        amount: isIncome ? `+${formatCurrency(entry.amount)}` : `-${formatCurrency(entry.amount)}`,
+        method: getMethodLabel(entry.method),
+        reference: isIncome ? (entry as IncomeTransaction).receiptNumber : (entry as ExpenseTransaction).category,
+      }
+    })
+    const dateStr = format(selectedDate, 'EEEE, MMMM dd, yyyy')
+    exportToPDF(exportData, `MIBAM_Cashbook_${format(selectedDate, 'yyyy-MM-dd')}`, {
+      title: 'MIBAM Daily Cashbook',
+      subtitle: `Cashbook for ${dateStr}`,
+      headers: [
+        { key: 'time', label: 'Time' },
+        { key: 'description', label: 'Description' },
+        { key: 'type', label: 'Type' },
+        { key: 'amount', label: 'Amount (UGX)' },
+        { key: 'method', label: 'Method' },
+        { key: 'reference', label: 'Reference' },
+      ],
+      summaryRows: [
+        { label: 'Opening Balance', value: formatCurrency(data.summary.openingBalance) },
+        { label: 'Total Income', value: formatCurrency(data.summary.totalIncome) },
+        { label: 'Total Expenses', value: formatCurrency(data.summary.totalExpenses) },
+        { label: 'Net Balance', value: formatCurrency(data.summary.netBalance) },
+        { label: 'Closing Balance', value: formatCurrency(data.summary.closingBalance) },
+      ],
+    })
+    toast.success('PDF export opened')
+  }
+
+  const handleExportExcel = () => {
+    if (!data) { toast.error('No data to export'); return }
+    const timeline = buildTimelineExport()
+    const exportData = timeline.map((entry) => {
+      const isIncome = entry.type === 'Income'
+      return {
+        time: formatTime(entry.time),
+        description: isIncome ? (entry as IncomeTransaction).studentName : (entry as ExpenseTransaction).title,
+        type: entry.type,
+        amount: entry.amount,
+        method: getMethodLabel(entry.method),
+        reference: isIncome ? (entry as IncomeTransaction).receiptNumber : (entry as ExpenseTransaction).category,
+      }
+    })
+    const dateStr = format(selectedDate, 'EEEE, MMMM dd, yyyy')
+    exportToExcel(exportData, `MIBAM_Cashbook_${format(selectedDate, 'yyyy-MM-dd')}`, {
+      title: `MIBAM Daily Cashbook - ${dateStr}`,
+      headers: [
+        { key: 'time', label: 'Time' },
+        { key: 'description', label: 'Description' },
+        { key: 'type', label: 'Type' },
+        { key: 'amount', label: 'Amount (UGX)' },
+        { key: 'method', label: 'Method' },
+        { key: 'reference', label: 'Reference' },
+      ],
+      summaryRows: [
+        { label: 'Opening Balance', value: formatCurrency(data.summary.openingBalance) },
+        { label: 'Total Income', value: formatCurrency(data.summary.totalIncome) },
+        { label: 'Total Expenses', value: formatCurrency(data.summary.totalExpenses) },
+        { label: 'Net Balance', value: formatCurrency(data.summary.netBalance) },
+        { label: 'Closing Balance', value: formatCurrency(data.summary.closingBalance) },
+      ],
+    })
+    toast.success('Excel export downloaded')
+  }
+
+  const handleExportCSV = () => {
+    if (!data) { toast.error('No data to export'); return }
+    const timeline = buildTimelineExport()
+    const exportData = timeline.map((entry) => {
+      const isIncome = entry.type === 'Income'
+      return {
+        time: formatTime(entry.time),
+        description: isIncome ? (entry as IncomeTransaction).studentName : (entry as ExpenseTransaction).title,
+        type: entry.type,
+        amount: entry.amount,
+        method: entry.method,
+        reference: isIncome ? (entry as IncomeTransaction).receiptNumber : (entry as ExpenseTransaction).category,
+      }
+    })
+    exportToCSV(exportData, `MIBAM_Cashbook_${format(selectedDate, 'yyyy-MM-dd')}`, [
+      { key: 'time', label: 'Time' },
+      { key: 'description', label: 'Description' },
+      { key: 'type', label: 'Type' },
+      { key: 'amount', label: 'Amount (UGX)' },
+      { key: 'method', label: 'Method' },
+      { key: 'reference', label: 'Reference' },
+    ])
+    toast.success('CSV export downloaded')
+  }
+
   // ============================================================
   // Error State
   // ============================================================
   if (error) {
     return (
       <div className="space-y-6">
-        <DateSelector selectedDate={selectedDate} onDateChange={handleDateChange} />
+        <DateSelector selectedDate={selectedDate} onDateChange={handleDateChange} onExportPDF={handleExportPDF} onExportExcel={handleExportExcel} onExportCSV={handleExportCSV} />
         <Card className="premium-card">
           <CardContent className="flex flex-col items-center justify-center py-16">
             <AlertCircle className="h-12 w-12 text-rose-500 mb-4" />
@@ -1404,7 +1551,7 @@ export function CashbookModule() {
   if (loading || !data) {
     return (
       <div className="space-y-6">
-        <DateSelector selectedDate={selectedDate} onDateChange={handleDateChange} />
+        <DateSelector selectedDate={selectedDate} onDateChange={handleDateChange} onExportPDF={handleExportPDF} onExportExcel={handleExportExcel} onExportCSV={handleExportCSV} />
         <div className="grid gap-4 sm:grid-cols-3">
           <SummaryCardSkeleton />
           <SummaryCardSkeleton />
@@ -1436,7 +1583,7 @@ export function CashbookModule() {
     >
       {/* Date Selector */}
       <motion.div variants={itemVariants}>
-        <DateSelector selectedDate={selectedDate} onDateChange={handleDateChange} />
+        <DateSelector selectedDate={selectedDate} onDateChange={handleDateChange} onExportPDF={handleExportPDF} onExportExcel={handleExportExcel} onExportCSV={handleExportCSV} />
       </motion.div>
 
       {/* Summary Cards */}

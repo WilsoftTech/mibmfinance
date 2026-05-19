@@ -32,11 +32,16 @@ import {
   Loader2,
   MoreHorizontal,
   X,
+  Download,
+  FileSpreadsheet,
+  FileText,
+  File,
 } from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { formatCurrency, formatDate, getCategoryColor, getExpenseStatusColor, cn } from '@/lib/utils'
 import type { Expense, ExpenseCategory, ExpenseStatus, PaymentMethod } from '@/lib/types'
 import { toast } from 'sonner'
+import { exportToExcel, exportToCSV, exportToPDF } from '@/lib/export-utils'
 
 // UI Components
 import { Button } from '@/components/ui/button'
@@ -933,6 +938,127 @@ export function ExpensesModule() {
   const totalAmount = expenses.reduce((sum, e) => sum + e.amount, 0)
   const pendingCount = expenses.filter(e => e.status === 'pending').length
 
+  // Export handlers
+  const fetchAllExpenses = async (): Promise<Expense[]> => {
+    try {
+      const params = new URLSearchParams()
+      if (searchQuery) params.set('q', searchQuery)
+      if (filterCategory) params.set('category', filterCategory)
+      if (filterStatus) params.set('status', filterStatus)
+      if (filterPaymentMethod) params.set('paymentMethod', filterPaymentMethod)
+      if (dateFrom) params.set('startDate', dateFrom.toISOString())
+      if (dateTo) params.set('endDate', dateTo.toISOString())
+      params.set('limit', '10000')
+      const res = await fetch(`/api/expenses?${params.toString()}`)
+      const data = await res.json()
+      if (data.success && data.data) return data.data as Expense[]
+    } catch {
+      // fallback
+    }
+    return expenses
+  }
+
+  const handleExportExcel = async () => {
+    const allExpenses = await fetchAllExpenses()
+    if (!allExpenses.length) { toast.error('No data to export'); return }
+    const exportData = allExpenses.map((e) => ({
+      title: e.title,
+      category: formatCategoryLabel(e.category),
+      amount: formatCurrency(e.amount),
+      paymentMethod: e.paymentMethod.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()),
+      date: formatDate(e.date),
+      status: e.status.charAt(0).toUpperCase() + e.status.slice(1),
+      createdBy: e.creator?.name || 'Unknown',
+      description: e.description || '',
+    }))
+    const totalExportAmount = allExpenses.reduce((sum, e) => sum + e.amount, 0)
+    exportToExcel(exportData, `MIBAM_Expenses_${new Date().toISOString().slice(0, 10)}`, {
+      title: 'MIBAM Expense Report',
+      headers: [
+        { key: 'title', label: 'Title' },
+        { key: 'category', label: 'Category' },
+        { key: 'amount', label: 'Amount (UGX)' },
+        { key: 'paymentMethod', label: 'Payment Method' },
+        { key: 'date', label: 'Date' },
+        { key: 'status', label: 'Status' },
+        { key: 'createdBy', label: 'Created By' },
+        { key: 'description', label: 'Description' },
+      ],
+      summaryRows: [
+        { label: 'Total Expenses', value: formatCurrency(totalExportAmount) },
+        { label: 'Number of Records', value: String(allExpenses.length) },
+      ],
+    })
+    toast.success('Excel export downloaded')
+  }
+
+  const handleExportPDF = async () => {
+    const allExpenses = await fetchAllExpenses()
+    if (!allExpenses.length) { toast.error('No data to export'); return }
+    const totalExportAmount = allExpenses.reduce((sum, e) => sum + e.amount, 0)
+    const categoryTotalsExport: Record<string, number> = {}
+    allExpenses.forEach((e) => {
+      categoryTotalsExport[e.category] = (categoryTotalsExport[e.category] || 0) + e.amount
+    })
+    const exportData = allExpenses.map((e) => ({
+      title: e.title,
+      category: formatCategoryLabel(e.category),
+      amount: formatCurrency(e.amount),
+      paymentMethod: e.paymentMethod.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()),
+      date: formatDate(e.date),
+      status: e.status.charAt(0).toUpperCase() + e.status.slice(1),
+      createdBy: e.creator?.name || 'Unknown',
+    }))
+    exportToPDF(exportData, `MIBAM_Expenses_${new Date().toISOString().slice(0, 10)}`, {
+      title: 'MIBAM Expense Report',
+      subtitle: `Expense Report - ${formatDate(new Date())}`,
+      headers: [
+        { key: 'title', label: 'Title' },
+        { key: 'category', label: 'Category' },
+        { key: 'amount', label: 'Amount (UGX)' },
+        { key: 'paymentMethod', label: 'Method' },
+        { key: 'date', label: 'Date' },
+        { key: 'status', label: 'Status' },
+        { key: 'createdBy', label: 'Created By' },
+      ],
+      summaryRows: [
+        { label: 'Total Expenses', value: formatCurrency(totalExportAmount) },
+        { label: 'Number of Records', value: String(allExpenses.length) },
+        ...Object.entries(categoryTotalsExport).map(([cat, total]) => ({
+          label: `${formatCategoryLabel(cat)} Total`,
+          value: formatCurrency(total),
+        })),
+      ],
+    })
+    toast.success('PDF export opened')
+  }
+
+  const handleExportCSV = async () => {
+    const allExpenses = await fetchAllExpenses()
+    if (!allExpenses.length) { toast.error('No data to export'); return }
+    const exportData = allExpenses.map((e) => ({
+      title: e.title,
+      category: formatCategoryLabel(e.category),
+      amount: e.amount,
+      paymentMethod: e.paymentMethod,
+      date: formatDate(e.date),
+      status: e.status,
+      createdBy: e.creator?.name || 'Unknown',
+      description: e.description || '',
+    }))
+    exportToCSV(exportData, `MIBAM_Expenses_${new Date().toISOString().slice(0, 10)}`, [
+      { key: 'title', label: 'Title' },
+      { key: 'category', label: 'Category' },
+      { key: 'amount', label: 'Amount (UGX)' },
+      { key: 'paymentMethod', label: 'Payment Method' },
+      { key: 'date', label: 'Date' },
+      { key: 'status', label: 'Status' },
+      { key: 'createdBy', label: 'Created By' },
+      { key: 'description', label: 'Description' },
+    ])
+    toast.success('CSV export downloaded')
+  }
+
   if (loading && expenses.length === 0) {
     return <LoadingSkeleton />
   }
@@ -951,13 +1077,38 @@ export function ExpensesModule() {
             Track and manage institutional expenses, approvals, and categories.
           </p>
         </div>
-        <Button
-          onClick={() => { setEditingExpense(null); setFormOpen(true) }}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Add Expense
-        </Button>
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-2">
+                <Download className="h-4 w-4" />
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleExportExcel}>
+                <FileSpreadsheet className="mr-2 h-4 w-4 text-emerald-600" />
+                Export to Excel (.xls)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportPDF}>
+                <FileText className="mr-2 h-4 w-4 text-rose-600" />
+                Export to PDF
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleExportCSV}>
+                <File className="mr-2 h-4 w-4 text-amber-600" />
+                Export to CSV
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button
+            onClick={() => { setEditingExpense(null); setFormOpen(true) }}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Expense
+          </Button>
+        </div>
       </motion.div>
 
       {/* Category Summary Cards */}

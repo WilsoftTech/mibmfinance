@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { motion } from 'framer-motion'
 import {
   Users,
@@ -21,6 +21,7 @@ import {
   Smartphone,
   Building2,
   ChevronRight,
+  Clock,
 } from 'lucide-react'
 import {
   AreaChart,
@@ -40,6 +41,7 @@ import {
 import { useAppStore } from '@/lib/store'
 import { formatCurrency, formatRelativeTime, getInitials } from '@/lib/utils'
 import { AIInsightsWidget } from '@/components/modules/ai-insights'
+import { AnimatedNumber } from '@/components/ui/animated-number'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -293,6 +295,8 @@ function ListSkeleton() {
 interface KPICardProps {
   title: string
   value: string
+  numericValue?: number
+  format?: 'number' | 'currency'
   subtitle?: string
   growth?: number
   icon: React.ElementType
@@ -301,7 +305,7 @@ interface KPICardProps {
   index: number
 }
 
-function KPICard({ title, value, subtitle, growth, icon: Icon, iconColor, iconBg, index }: KPICardProps) {
+function KPICard({ title, value, numericValue, format: fmt, subtitle, growth, icon: Icon, iconColor, iconBg, index }: KPICardProps) {
   const isPositive = growth !== undefined && growth >= 0
 
   return (
@@ -310,7 +314,7 @@ function KPICard({ title, value, subtitle, growth, icon: Icon, iconColor, iconBg
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.08, duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
     >
-      <Card className="premium-card group relative overflow-hidden">
+      <Card className="premium-card card-hover-scale group relative overflow-hidden">
         {/* Subtle gradient accent */}
         <div className={`absolute top-0 right-0 w-24 h-24 ${iconBg} rounded-full blur-3xl opacity-30 -translate-y-8 translate-x-8 group-hover:opacity-50 transition-opacity duration-500`} />
         <CardHeader className="flex flex-row items-center justify-between pb-2 relative">
@@ -322,7 +326,18 @@ function KPICard({ title, value, subtitle, growth, icon: Icon, iconColor, iconBg
           </div>
         </CardHeader>
         <CardContent className="relative">
-          <div className="text-2xl font-bold tracking-tight">{value}</div>
+          <div className="text-2xl font-bold tracking-tight">
+            {numericValue !== undefined ? (
+              <AnimatedNumber
+                value={numericValue}
+                format={fmt || 'number'}
+                duration={1500}
+                delay={index * 80}
+              />
+            ) : (
+              value
+            )}
+          </div>
           <div className="flex items-center gap-1.5 mt-1.5">
             {growth !== undefined && (
               <>
@@ -405,10 +420,14 @@ export function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const { setCurrentPage } = useAppStore()
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [secondsSinceUpdate, setSecondsSinceUpdate] = useState(0)
+  const { setCurrentPage, setQuickStats } = useAppStore()
+  const autoRefreshRef = useRef<NodeJS.Timeout | null>(null)
+  const tickRef = useRef<NodeJS.Timeout | null>(null)
 
-  const fetchDashboard = useCallback(async () => {
-    setLoading(true)
+  const fetchDashboard = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true)
     setError(null)
     try {
       const res = await fetch('/api/dashboard')
@@ -416,16 +435,67 @@ export function DashboardPage() {
       const json = await res.json()
       if (!json.success) throw new Error(json.error || 'Failed to fetch dashboard data')
       setData(json.data as DashboardData)
+      setLastUpdated(new Date())
+      // Update quick stats in store for footer
+      if (json.data?.kpis) {
+        setQuickStats({
+          totalStudents: json.data.kpis.totalStudents || 0,
+          todayCollections: json.data.kpis.monthlyRevenue || 0,
+          pendingExpenses: Math.abs(json.data.kpis.outstandingBalances || 0),
+          netBalance: json.data.kpis.netIncome || 0,
+        })
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [setQuickStats])
 
+  // Initial fetch
   useEffect(() => {
     fetchDashboard()
   }, [fetchDashboard])
+
+  // Auto-refresh every 5 minutes
+  useEffect(() => {
+    autoRefreshRef.current = setInterval(() => {
+      fetchDashboard(false)
+    }, 300000) // 5 minutes
+
+    return () => {
+      if (autoRefreshRef.current) clearInterval(autoRefreshRef.current)
+    }
+  }, [fetchDashboard])
+
+  // Tick seconds since last update
+  useEffect(() => {
+    if (!lastUpdated) return
+    tickRef.current = setInterval(() => {
+      setSecondsSinceUpdate(Math.floor((Date.now() - lastUpdated.getTime()) / 1000))
+    }, 1000)
+
+    return () => {
+      if (tickRef.current) clearInterval(tickRef.current)
+    }
+  }, [lastUpdated])
+
+  // Listen for global refresh event (from keyboard shortcuts)
+  useEffect(() => {
+    const handleRefresh = () => fetchDashboard(false)
+    window.addEventListener('mibam-refresh', handleRefresh)
+    return () => window.removeEventListener('mibam-refresh', handleRefresh)
+  }, [fetchDashboard])
+
+  // Format last updated text
+  const getLastUpdatedText = () => {
+    if (!lastUpdated) return ''
+    if (secondsSinceUpdate < 5) return 'Just now'
+    if (secondsSinceUpdate < 60) return `${secondsSinceUpdate}s ago`
+    const mins = Math.floor(secondsSinceUpdate / 60)
+    if (mins < 60) return `${mins}m ago`
+    return `${Math.floor(mins / 60)}h ago`
+  }
 
   // ============================================================
   // Error State
@@ -523,6 +593,8 @@ export function DashboardPage() {
     {
       title: 'Total Students',
       value: kpis.totalStudents.toLocaleString(),
+      numericValue: kpis.totalStudents,
+      format: 'number',
       subtitle: `${kpis.activeStudents} active`,
       growth: undefined,
       icon: Users,
@@ -533,6 +605,8 @@ export function DashboardPage() {
     {
       title: 'Fees Collected',
       value: formatCurrency(kpis.monthlyRevenue),
+      numericValue: kpis.monthlyRevenue,
+      format: 'currency',
       growth: kpis.feesCollectedGrowth,
       icon: DollarSign,
       iconColor: 'text-emerald-600 dark:text-emerald-400',
@@ -542,6 +616,8 @@ export function DashboardPage() {
     {
       title: 'Outstanding Balances',
       value: formatCurrency(kpis.outstandingBalances),
+      numericValue: kpis.outstandingBalances,
+      format: 'currency',
       subtitle: 'Total owed by students',
       growth: undefined,
       icon: Wallet,
@@ -552,6 +628,8 @@ export function DashboardPage() {
     {
       title: 'Monthly Revenue',
       value: formatCurrency(kpis.monthlyRevenue),
+      numericValue: kpis.monthlyRevenue,
+      format: 'currency',
       growth: kpis.revenueGrowth,
       icon: TrendingUp,
       iconColor: 'text-emerald-600 dark:text-emerald-400',
@@ -561,6 +639,8 @@ export function DashboardPage() {
     {
       title: 'Monthly Expenses',
       value: formatCurrency(kpis.monthlyExpenses),
+      numericValue: kpis.monthlyExpenses,
+      format: 'currency',
       growth: kpis.expenseGrowth,
       icon: TrendingDown,
       iconColor: 'text-rose-600 dark:text-rose-400',
@@ -570,6 +650,8 @@ export function DashboardPage() {
     {
       title: 'Net Income',
       value: formatCurrency(kpis.netIncome),
+      numericValue: kpis.netIncome,
+      format: 'currency',
       growth: kpis.revenueGrowth,
       icon: Activity,
       iconColor: kpis.netIncome >= 0
@@ -601,15 +683,23 @@ export function DashboardPage() {
               Overview of your financial activity at Mitooma Institute of Business and Management.
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchDashboard}
-            className="gap-2 w-fit"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Refresh
-          </Button>
+          <div className="flex items-center gap-3">
+            {lastUpdated && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                Updated {getLastUpdatedText()}
+              </span>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchDashboard(false)}
+              className="gap-2 w-fit"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Refresh
+            </Button>
+          </div>
         </div>
       </motion.div>
 

@@ -200,7 +200,15 @@ export function exportToPDF(
     .header h2 { color: #374151; font-size: 16px; font-weight: 500; margin-bottom: 2px; }
     .header .date { color: #9ca3af; font-size: 12px; margin-top: 8px; }
     .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #9ca3af; font-size: 11px; }
-    @media print { body { padding: 20px; } .no-print { display: none; } }
+    @page { size: A4; margin: 15mm; }
+    @media print {
+      body { padding: 0; background: #fff; }
+      .no-print { display: none; }
+      table { page-break-inside: auto; }
+      tr { page-break-inside: avoid; page-break-after: auto; }
+      thead { display: table-header-group; }
+      tfoot { display: table-footer-group; }
+    }
   </style>
 </head>
 <body>
@@ -257,20 +265,28 @@ export function exportToPDF(
     .summary-card.balance { background: #f0fdfa; border-color: #99f6e4; }
     .summary-card .label { font-size: 12px; color: #6b7280; margin-bottom: 4px; }
     .summary-card .value { font-size: 18px; font-weight: 700; color: #1f2937; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
-    thead th { background: #047857; color: white; padding: 10px 8px; text-align: left; font-weight: 600; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 11px; table-layout: auto; }
+    thead th { background: #047857; color: white; padding: 5px 6px; text-align: left; font-weight: 600; }
     thead th.amount { text-align: right; }
-    tbody td { padding: 8px; border-bottom: 1px solid #e5e7eb; }
+    tbody td { padding: 5px 6px; border-bottom: 1px solid #e5e7eb; }
     tbody td.amount { text-align: right; font-family: monospace; }
     tbody tr:nth-child(even) { background: #f9fafb; }
     tbody tr.total { background: #f0fdf4; font-weight: 700; }
-    .section-title { font-size: 14px; font-weight: 600; color: #374151; margin: 20px 0 10px; padding-bottom: 4px; border-bottom: 1px solid #e5e7eb; }
+    .section-title { font-size: 13px; font-weight: 600; color: #374151; margin: 20px 0 10px; padding-bottom: 4px; border-bottom: 1px solid #e5e7eb; }
     .footer { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #9ca3af; font-size: 11px; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 500; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 10px; font-weight: 500; }
     .badge-pending { background: #fef3c7; color: #92400e; }
     .badge-approved { background: #d1fae5; color: #065f46; }
     .badge-rejected { background: #fee2e2; color: #991b1b; }
-    @media print { body { padding: 20px; } .no-print { display: none; } }
+    @page { size: A4; margin: 15mm; }
+    @media print {
+      body { padding: 0; background: #fff; }
+      .no-print { display: none; }
+      table { page-break-inside: auto; }
+      tr { page-break-inside: avoid; page-break-after: auto; }
+      thead { display: table-header-group; }
+      tfoot { display: table-footer-group; }
+    }
   </style>
 </head>
 <body>

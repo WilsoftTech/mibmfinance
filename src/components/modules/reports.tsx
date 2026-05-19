@@ -204,6 +204,132 @@ function exportToExcel(data: Record<string, unknown>[], filename: string) {
 }
 
 // ============================================================
+// PDF Export Helper – builds complete A4 HTML from full data
+// ============================================================
+
+const INST = {
+  name: 'MITOOMA INSTITUTE OF BUSINESS AND MANAGEMENT',
+  address: 'P.O. Box 44, Mitooma, Uganda',
+  phone: '+256 XXX XXX XXX',
+}
+
+interface PDFCol {
+  label: string
+  key: string
+  align?: 'left' | 'right' | 'center'
+  width?: string
+  fmt?: (v: unknown) => string
+}
+
+function buildReportPDF(opts: {
+  title: string
+  period?: string
+  summaryRows?: { label: string; value: string }[]
+  sections: { heading?: string; cols: PDFCol[]; rows: Record<string, unknown>[] }[]
+}) {
+  const win = window.open('', '_blank')
+  if (!win) { toast.error('Allow popups to export PDF'); return }
+
+  const generated = new Date().toLocaleString('en-UG', {
+    year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  })
+
+  const summaryHTML = (opts.summaryRows?.length ?? 0) > 0
+    ? `<div class="sum-grid">${opts.summaryRows!.map(r =>
+        `<div class="sum-card"><div class="s-lbl">${r.label}</div><div class="s-val">${r.value}</div></div>`
+      ).join('')}</div>`
+    : ''
+
+  const sectionsHTML = opts.sections.map(sec => {
+    const colgroup = sec.cols.map(c => `<col style="width:${c.width ?? 'auto'}">`).join('')
+    const thead = sec.cols.map(c =>
+      `<th style="text-align:${c.align ?? 'left'}">${c.label}</th>`
+    ).join('')
+    const tbody = sec.rows.map((row, ri) => {
+      const cells = sec.cols.map(c => {
+        const raw = row[c.key]
+        const val = c.fmt ? c.fmt(raw) : (raw === null || raw === undefined ? '' : String(raw))
+        return `<td style="text-align:${c.align ?? 'left'}">${val}</td>`
+      }).join('')
+      const cls = (row.__rowClass as string | undefined) ?? (ri % 2 === 1 ? 'stripe' : '')
+      return `<tr class="${cls}">${cells}</tr>`
+    }).join('')
+    return `
+      ${sec.heading ? `<div class="sec-head">${sec.heading}</div>` : ''}
+      <table><colgroup>${colgroup}</colgroup>
+        <thead><tr>${thead}</tr></thead>
+        <tbody>${tbody}</tbody>
+      </table>`
+  }).join('')
+
+  const html = `<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>${opts.title} — MIBAM</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  @page{size:A4;margin:15mm;}
+  body{font-family:'Segoe UI',Calibri,Arial,sans-serif;color:#111;font-size:11px;line-height:1.45;background:#fff;}
+  .page{max-width:780px;margin:0 auto;padding:16px;}
+  .rpt-hdr{border-bottom:2px solid #047857;padding-bottom:10px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:flex-start;}
+  .inst-name{font-size:14px;font-weight:700;color:#047857;letter-spacing:.2px;}
+  .inst-sub{font-size:9.5px;color:#666;margin-top:2px;}
+  .rpt-meta{text-align:right;}
+  .rpt-title{font-size:13px;font-weight:700;color:#111;}
+  .rpt-period{font-size:9.5px;color:#555;margin-top:2px;}
+  .rpt-gen{font-size:8.5px;color:#999;margin-top:1px;}
+  .sum-grid{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px;}
+  .sum-card{flex:1 1 130px;border:1px solid #d1fae5;background:#f0fdf4;border-radius:3px;padding:7px 9px;}
+  .s-lbl{font-size:8.5px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px;}
+  .s-val{font-size:12px;font-weight:700;color:#111;margin-top:1px;}
+  .sec-head{font-size:10px;font-weight:700;color:#047857;text-transform:uppercase;letter-spacing:.4px;margin:12px 0 5px;padding-bottom:3px;border-bottom:1px solid #d1fae5;}
+  table{width:100%;border-collapse:collapse;table-layout:auto;margin-bottom:10px;page-break-inside:auto;}
+  thead{display:table-header-group;}
+  tfoot{display:table-footer-group;}
+  thead th{background:#047857;color:#fff;padding:5px 6px;font-size:9.5px;font-weight:600;white-space:nowrap;}
+  tbody td{padding:4.5px 6px;border-bottom:1px solid #e5e7eb;font-size:10px;vertical-align:middle;}
+  tbody tr.stripe td{background:#f9fafb;}
+  tbody tr{page-break-inside:avoid;page-break-after:auto;}
+  tr.row-total td{background:#047857;color:#fff;font-weight:700;padding:5px 6px;}
+  tr.row-subtotal td{background:#f0fdf4;font-weight:600;padding:5px 6px;border-top:1.5px solid #047857;}
+  tr.row-opening td,tr.row-closing td{background:#eff6ff;font-weight:600;font-style:italic;}
+  tr.row-overdue td{background:#fff1f2;}
+  tr.row-separator td{border:none;padding:3px 0;}
+  .rpt-ftr{border-top:1px solid #e5e7eb;margin-top:16px;padding-top:8px;text-align:center;font-size:8.5px;color:#aaa;}
+  .print-ctrl{text-align:center;padding:18px;background:#f4f4f4;}
+  .print-btn{padding:9px 22px;background:#047857;color:#fff;border:none;border-radius:5px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;}
+  @media print{body{background:#fff;}.print-ctrl{display:none;}.page{padding:0;max-width:100%;}}
+</style>
+<script>window.addEventListener('load',function(){setTimeout(function(){window.print();},400);});<\/script>
+</head>
+<body>
+<div class="page">
+  <div class="rpt-hdr">
+    <div>
+      <div class="inst-name">${INST.name}</div>
+      <div class="inst-sub">${INST.address} &bull; Tel: ${INST.phone}</div>
+    </div>
+    <div class="rpt-meta">
+      <div class="rpt-title">${opts.title}</div>
+      ${opts.period ? `<div class="rpt-period">Period: ${opts.period}</div>` : ''}
+      <div class="rpt-gen">Generated: ${generated}</div>
+    </div>
+  </div>
+  ${summaryHTML}
+  ${sectionsHTML}
+  <div class="rpt-ftr">MIBAM Finance Management System &mdash; Computer generated report.</div>
+</div>
+<div class="print-ctrl">
+  <button class="print-btn" onclick="window.print()">&#128438;&nbsp; Print / Save as PDF</button>
+</div>
+</body></html>`
+
+  win.document.open()
+  win.document.write(html)
+  win.document.close()
+}
+
+// ============================================================
 // Shared Sub-Components
 // ============================================================
 
@@ -688,11 +814,49 @@ function DayBookView({ onBack }: { onBack: () => void }) {
       Debit: e.debit, Credit: e.credit, 'Running Balance': e.runningBalance,
     }))
 
+  const handlePDF = () => {
+    if (!data) return
+    const fmt = (n: number) => formatCurrency(n)
+    const rows: Record<string, unknown>[] = [
+      { __rowClass: 'row-opening', date: '', ref: '', desc: 'Opening Balance', acct: '', debit: '', credit: '', bal: fmt(data.openingBalance) },
+      ...data.entries.map(e => ({
+        date: formatDate(e.date), ref: e.referenceNo, desc: e.description, acct: e.account,
+        debit: e.debit > 0 ? fmt(e.debit) : '—',
+        credit: e.credit > 0 ? fmt(e.credit) : '—',
+        bal: fmt(e.runningBalance),
+      })),
+      { __rowClass: 'row-closing', date: '', ref: '', desc: 'Closing Balance', acct: '',
+        debit: fmt(data.totalDebits), credit: fmt(data.totalCredits), bal: fmt(data.closingBalance) },
+    ]
+    buildReportPDF({
+      title: 'Daily Transaction Day Book',
+      period: data.period,
+      summaryRows: [
+        { label: 'Opening Balance', value: fmt(data.openingBalance) },
+        { label: 'Total Credits (Income)', value: fmt(data.totalCredits) },
+        { label: 'Total Debits (Expenses)', value: fmt(data.totalDebits) },
+        { label: 'Closing Balance', value: fmt(data.closingBalance) },
+      ],
+      sections: [{
+        cols: [
+          { label: 'Date', key: 'date', width: '80px' },
+          { label: 'Reference No', key: 'ref', width: '100px' },
+          { label: 'Description', key: 'desc' },
+          { label: 'Account', key: 'acct', width: '80px' },
+          { label: 'Debit', key: 'debit', align: 'right', width: '90px' },
+          { label: 'Credit', key: 'credit', align: 'right', width: '90px' },
+          { label: 'Balance', key: 'bal', align: 'right', width: '90px' },
+        ],
+        rows,
+      }],
+    })
+  }
+
   return (
     <div className="space-y-6">
       <PrintHeader title="Daily Transaction Day Book" />
       <ReportPageHeader title={card.title} description={card.description} icon={card.icon} colorClass={card.color} bgColor={card.bgColor} onBack={onBack}>
-        <ExportBar onCSV={() => exportToCSV(csvData(), 'MIBAM_DayBook')} onExcel={() => exportToExcel(csvData(), 'MIBAM_DayBook')} onPrint={() => window.print()} loading={loading} />
+        <ExportBar onCSV={() => exportToCSV(csvData(), 'MIBAM_DayBook')} onExcel={() => exportToExcel(csvData(), 'MIBAM_DayBook')} onPrint={handlePDF} loading={loading} />
       </ReportPageHeader>
 
       {/* Filters */}
@@ -834,6 +998,38 @@ function BalanceSheetView({ onBack }: { onBack: () => void }) {
     { Section: '', Item: 'Total Liabilities & Equity', Amount: data.totalLiabilitiesAndEquity },
   ]
 
+  const handlePDF = () => {
+    if (!data) return
+    const fmt = (n: number) => formatCurrency(n)
+    const rows: Record<string, unknown>[] = [
+      { section: 'ASSETS', item: 'Cash and Cash Equivalents', amount: fmt(data.assets.cashAndEquivalents) },
+      ...data.assets.receivableBreakdown.map(r => ({
+        section: '', item: `  Fees Receivable – ${r.course} (${r.students} students)`, amount: fmt(r.amount),
+      })),
+      { __rowClass: 'row-total', section: '', item: 'TOTAL ASSETS', amount: fmt(data.assets.total) },
+      { __rowClass: 'row-separator', section: '', item: '', amount: '' },
+      { section: 'LIABILITIES', item: 'Pending / Accrued Expenses', amount: fmt(data.liabilities.pendingExpenses) },
+      { __rowClass: 'row-total', section: '', item: 'TOTAL LIABILITIES', amount: fmt(data.liabilities.total) },
+      { __rowClass: 'row-separator', section: '', item: '', amount: '' },
+      { section: 'EQUITY', item: 'Accumulated Surplus / (Deficit)', amount: fmt(data.equity.accumulatedSurplus) },
+      { __rowClass: 'row-total', section: '', item: 'TOTAL EQUITY', amount: fmt(data.equity.total) },
+      { __rowClass: 'row-separator', section: '', item: '', amount: '' },
+      { __rowClass: 'row-total', section: '', item: 'TOTAL LIABILITIES & EQUITY', amount: fmt(data.totalLiabilitiesAndEquity) },
+    ]
+    buildReportPDF({
+      title: 'Balance Sheet',
+      period: `As at ${data.asAtLabel}`,
+      sections: [{
+        cols: [
+          { label: 'Section', key: 'section', width: '120px' },
+          { label: 'Account / Item', key: 'item' },
+          { label: 'Amount (UGX)', key: 'amount', align: 'right', width: '150px' },
+        ],
+        rows,
+      }],
+    })
+  }
+
   const BSRow = ({ label, value, bold, indent, subtext }: { label: string; value: number; bold?: boolean; indent?: boolean; subtext?: string }) => (
     <div className={cn('flex items-center justify-between py-2 px-3 rounded', indent ? 'ml-4 text-sm text-muted-foreground' : bold ? 'font-semibold bg-muted/30' : 'text-sm')}>
       <div>
@@ -848,7 +1044,7 @@ function BalanceSheetView({ onBack }: { onBack: () => void }) {
     <div className="space-y-6">
       <PrintHeader title="Balance Sheet" />
       <ReportPageHeader title={card.title} description={card.description} icon={card.icon} colorClass={card.color} bgColor={card.bgColor} onBack={onBack}>
-        <ExportBar onCSV={() => exportToCSV(csvData(), 'MIBAM_BalanceSheet')} onExcel={() => exportToExcel(csvData(), 'MIBAM_BalanceSheet')} onPrint={() => window.print()} loading={loading} />
+        <ExportBar onCSV={() => exportToCSV(csvData(), 'MIBAM_BalanceSheet')} onExcel={() => exportToExcel(csvData(), 'MIBAM_BalanceSheet')} onPrint={handlePDF} loading={loading} />
       </ReportPageHeader>
 
       {/* Filters */}
@@ -952,15 +1148,19 @@ interface FeeCollectionData {
   generatedAt: string
 }
 
+const FEE_PAGE_SIZE = 50
+
 function FeeCollectionView({ onBack }: { onBack: () => void }) {
   const [dateFrom, setDateFrom] = useState<Date | undefined>(() => { const d = new Date(); d.setDate(1); return d })
   const [dateTo, setDateTo] = useState<Date | undefined>(new Date())
   const [paymentMethod, setPaymentMethod] = useState('all')
   const [data, setData] = useState<FeeCollectionData | null>(null)
   const [loading, setLoading] = useState(false)
+  const [page, setPage] = useState(0)
 
   const fetch_ = useCallback(async () => {
     setLoading(true)
+    setPage(0)
     try {
       const p = new URLSearchParams({ type: 'fees-collection', period: 'monthly' })
       if (dateFrom) p.set('dateFrom', dateFrom.toISOString())
@@ -985,6 +1185,59 @@ function FeeCollectionView({ onBack }: { onBack: () => void }) {
       Reference: p.reference ?? '', Date: formatDate(p.date),
     }))
 
+  const handlePDF = () => {
+    if (!data) return
+    const fmt = (n: number) => formatCurrency(n)
+    buildReportPDF({
+      title: 'Fee Collection Report',
+      period: data.period,
+      summaryRows: [
+        { label: 'Total Collected', value: fmt(data.summary.totalCollected) },
+        { label: 'Transactions', value: String(data.summary.totalTransactions) },
+        { label: 'Average Payment', value: fmt(data.summary.averagePayment) },
+      ],
+      sections: [
+        {
+          heading: 'Collection by Method',
+          cols: [
+            { label: 'Method', key: 'method' },
+            { label: 'Count', key: 'count', align: 'center', width: '60px' },
+            { label: 'Amount (UGX)', key: 'amount', align: 'right', width: '150px' },
+          ],
+          rows: data.byMethod.map(m => ({
+            method: m.method.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()),
+            count: m.count, amount: fmt(m.total),
+          })),
+        },
+        {
+          heading: 'Collection by Course',
+          cols: [
+            { label: 'Course', key: 'course' },
+            { label: 'Code', key: 'code', width: '80px' },
+            { label: 'Count', key: 'count', align: 'center', width: '60px' },
+            { label: 'Amount (UGX)', key: 'amount', align: 'right', width: '150px' },
+          ],
+          rows: data.byCourse.map(c => ({ course: c.course, code: c.code, count: c.count, amount: fmt(c.total) })),
+        },
+        {
+          heading: `All Payments (${data.payments.length})`,
+          cols: [
+            { label: 'Receipt #', key: 'receipt', width: '90px' },
+            { label: 'Student Name', key: 'name', width: '150px' },
+            { label: 'Course', key: 'course', width: '100px' },
+            { label: 'Amount (UGX)', key: 'amount', align: 'right', width: '90px' },
+            { label: 'Method', key: 'method', width: '70px' },
+            { label: 'Date', key: 'date', width: '80px' },
+          ],
+          rows: data.payments.map(p => ({
+            receipt: p.receiptNumber, name: p.studentName, course: p.course,
+            amount: fmt(p.amount), method: p.method.replace('_', ' '), date: formatDate(p.date),
+          })),
+        },
+      ],
+    })
+  }
+
   const methodColors: Record<string, string> = { cash: '#10b981', bank: '#0ea5e9', mobile_money: '#f59e0b' }
   const pieMethodData = (data?.byMethod ?? []).map((m, i) => ({
     name: m.method.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()),
@@ -997,7 +1250,7 @@ function FeeCollectionView({ onBack }: { onBack: () => void }) {
     <div className="space-y-6">
       <PrintHeader title="Fee Collection Report" />
       <ReportPageHeader title={card.title} description={card.description} icon={card.icon} colorClass={card.color} bgColor={card.bgColor} onBack={onBack}>
-        <ExportBar onCSV={() => exportToCSV(csvData(), 'MIBAM_FeeCollection')} onExcel={() => exportToExcel(csvData(), 'MIBAM_FeeCollection')} onPrint={() => window.print()} loading={loading} />
+        <ExportBar onCSV={() => exportToCSV(csvData(), 'MIBAM_FeeCollection')} onExcel={() => exportToExcel(csvData(), 'MIBAM_FeeCollection')} onPrint={handlePDF} loading={loading} />
       </ReportPageHeader>
 
       {/* Filters */}
@@ -1096,7 +1349,7 @@ function FeeCollectionView({ onBack }: { onBack: () => void }) {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.payments.slice(0, 100).map((p, i) => (
+                  {data.payments.slice(page * FEE_PAGE_SIZE, (page + 1) * FEE_PAGE_SIZE).map((p, i) => (
                     <TableRow key={i}>
                       <TableCell className="font-mono text-xs">{p.receiptNumber}</TableCell>
                       <TableCell><p className="font-medium text-sm">{p.studentName}</p><p className="text-xs text-muted-foreground">{p.studentId}</p></TableCell>
@@ -1109,7 +1362,16 @@ function FeeCollectionView({ onBack }: { onBack: () => void }) {
                   {data.payments.length === 0 && <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground text-sm">No payments in this period</TableCell></TableRow>}
                 </TableBody>
               </Table>
-              {data.payments.length > 100 && <p className="p-3 text-center text-xs text-muted-foreground border-t">Showing 100 of {data.payments.length}. Export CSV for full data.</p>}
+              {data.payments.length > FEE_PAGE_SIZE && (
+                <div className="flex items-center justify-between px-4 py-2 border-t text-xs text-muted-foreground">
+                  <span>Showing {page * FEE_PAGE_SIZE + 1}–{Math.min((page + 1) * FEE_PAGE_SIZE, data.payments.length)} of {data.payments.length} payments</span>
+                  <div className="flex items-center gap-1">
+                    <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>Prev</Button>
+                    <span className="px-2">Page {page + 1} / {Math.ceil(data.payments.length / FEE_PAGE_SIZE)}</span>
+                    <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setPage(p => p + 1)} disabled={(page + 1) * FEE_PAGE_SIZE >= data.payments.length}>Next</Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -1167,6 +1429,49 @@ function IncomeExpenditureView({ onBack }: { onBack: () => void }) {
     { Section: '', Category: data.isDeficit ? 'Net Deficit' : 'Net Surplus', Amount: data.netSurplus },
   ]
 
+  const handlePDF = () => {
+    if (!data) return
+    const fmt = (n: number) => formatCurrency(n)
+    buildReportPDF({
+      title: 'Income & Expenditure Statement',
+      period: data.period,
+      summaryRows: [
+        { label: 'Total Income', value: fmt(data.income.total) },
+        { label: 'Total Expenditure', value: fmt(data.expenditure.total) },
+        { label: data.isDeficit ? 'Net Deficit' : 'Net Surplus', value: fmt(Math.abs(data.netSurplus)) },
+      ],
+      sections: [
+        {
+          heading: 'Income',
+          cols: [
+            { label: 'Source', key: 'source' },
+            { label: 'Transactions', key: 'count', align: 'center', width: '100px' },
+            { label: 'Amount (UGX)', key: 'amount', align: 'right', width: '150px' },
+          ],
+          rows: [
+            ...(data.income.byMethod ?? []).map(m => ({ source: m.source, count: m.count, amount: fmt(m.amount) })),
+            { __rowClass: 'row-total', source: 'TOTAL INCOME', count: '', amount: fmt(data.income.total) },
+          ],
+        },
+        {
+          heading: 'Expenditure by Category',
+          cols: [
+            { label: 'Category', key: 'cat' },
+            { label: 'Items', key: 'count', align: 'center', width: '60px' },
+            { label: 'Amount (UGX)', key: 'amount', align: 'right', width: '150px' },
+          ],
+          rows: [
+            ...(data.expenditure.byCategory ?? []).map(c => ({
+              cat: c.category.charAt(0).toUpperCase() + c.category.slice(1), count: c.count, amount: fmt(c.amount),
+            })),
+            { __rowClass: 'row-total', cat: 'TOTAL EXPENDITURE', count: '', amount: fmt(data.expenditure.total) },
+            { __rowClass: 'row-total', cat: data.isDeficit ? 'NET DEFICIT' : 'NET SURPLUS', count: '', amount: fmt(Math.abs(data.netSurplus)) },
+          ],
+        },
+      ],
+    })
+  }
+
   const expCatData = (data?.expenditure.byCategory ?? []).map((c, i) => ({
     name: c.category.charAt(0).toUpperCase() + c.category.slice(1),
     value: c.amount, color: PIE_COLORS[i % PIE_COLORS.length],
@@ -1204,7 +1509,7 @@ function IncomeExpenditureView({ onBack }: { onBack: () => void }) {
     <div className="space-y-6">
       <PrintHeader title="Income & Expenditure Statement" />
       <ReportPageHeader title={card.title} description={card.description} icon={card.icon} colorClass={card.color} bgColor={card.bgColor} onBack={onBack}>
-        <ExportBar onCSV={() => exportToCSV(csvData(), 'MIBAM_IncomeExpenditure')} onExcel={() => exportToExcel(csvData(), 'MIBAM_IncomeExpenditure')} onPrint={() => window.print()} loading={loading} />
+        <ExportBar onCSV={() => exportToCSV(csvData(), 'MIBAM_IncomeExpenditure')} onExcel={() => exportToExcel(csvData(), 'MIBAM_IncomeExpenditure')} onPrint={handlePDF} loading={loading} />
       </ReportPageHeader>
 
       {/* Filters */}
@@ -1382,6 +1687,43 @@ function CashFlowView({ onBack }: { onBack: () => void }) {
     { Section: '', Item: 'Closing Balance', Amount: data.summary.closingBalance },
   ]
 
+  const handlePDF = () => {
+    if (!data) return
+    const fmt = (n: number) => formatCurrency(n)
+    buildReportPDF({
+      title: 'Cash Flow Statement',
+      period: data.period,
+      summaryRows: [
+        { label: 'Opening Balance', value: fmt(data.summary.openingBalance) },
+        { label: 'Total Income', value: fmt(data.summary.totalIncome) },
+        { label: 'Total Expenses', value: fmt(data.summary.totalExpenses) },
+        { label: 'Closing Balance', value: fmt(data.summary.closingBalance) },
+      ],
+      sections: [{
+        cols: [
+          { label: 'Description', key: 'desc' },
+          { label: 'Amount (UGX)', key: 'amount', align: 'right', width: '150px' },
+        ],
+        rows: [
+          { __rowClass: 'row-opening', desc: 'Opening Balance', amount: fmt(data.summary.openingBalance) },
+          { __rowClass: 'row-separator', desc: 'Operating Activities — Income', amount: '' },
+          ...Object.entries(data.income.byMethod ?? {}).map(([m, a]) => ({
+            desc: `  ${m.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}`, amount: fmt(a as number),
+          })),
+          { __rowClass: 'row-subtotal', desc: 'Total Income', amount: fmt(data.summary.totalIncome) },
+          { __rowClass: 'row-separator', desc: 'Operating Activities — Expenses', amount: '' },
+          ...Object.entries(data.expenses.byCategory ?? {}).map(([c, a]) => ({
+            desc: `  ${c.charAt(0).toUpperCase() + c.slice(1)}`, amount: fmt(a as number),
+          })),
+          { __rowClass: 'row-subtotal', desc: 'Total Expenses', amount: fmt(data.summary.totalExpenses) },
+          { __rowClass: 'row-separator', desc: '', amount: '' },
+          { __rowClass: 'row-total', desc: 'Net Cash Flow', amount: fmt(data.summary.netCashFlow) },
+          { __rowClass: 'row-closing', desc: 'Closing Balance', amount: fmt(data.summary.closingBalance) },
+        ],
+      }],
+    })
+  }
+
   const CFRow = ({ label, value, indent, bold, positive }: { label: string; value: number; indent?: boolean; bold?: boolean; positive?: boolean }) => (
     <div className={cn('flex items-center justify-between py-2 px-3 rounded', indent && 'ml-4 text-sm', bold && 'font-semibold bg-muted/30', !bold && !indent && 'text-sm')}>
       <span>{label}</span>
@@ -1393,7 +1735,7 @@ function CashFlowView({ onBack }: { onBack: () => void }) {
     <div className="space-y-6">
       <PrintHeader title="Cash Flow Statement" />
       <ReportPageHeader title={card.title} description={card.description} icon={card.icon} colorClass={card.color} bgColor={card.bgColor} onBack={onBack}>
-        <ExportBar onCSV={() => exportToCSV(csvData(), 'MIBAM_CashFlow')} onExcel={() => exportToExcel(csvData(), 'MIBAM_CashFlow')} onPrint={() => window.print()} loading={loading} />
+        <ExportBar onCSV={() => exportToCSV(csvData(), 'MIBAM_CashFlow')} onExcel={() => exportToExcel(csvData(), 'MIBAM_CashFlow')} onPrint={handlePDF} loading={loading} />
       </ReportPageHeader>
 
       {/* Filters */}
@@ -1527,6 +1869,40 @@ function OutstandingPaymentsView({ onBack }: { onBack: () => void }) {
       'Days Overdue': s.daysOverdue, Status: s.status,
     }))
 
+  const handlePDF = () => {
+    if (!data) return
+    const fmt = (n: number) => formatCurrency(n)
+    buildReportPDF({
+      title: 'Outstanding Payments Report',
+      period: data.period,
+      summaryRows: [
+        { label: 'Students Owing', value: String(data.summary.totalStudents) },
+        { label: 'Total Outstanding', value: fmt(data.summary.totalOutstanding) },
+        { label: 'Overdue Amount', value: fmt(data.summary.totalOverdue) },
+        { label: 'Overdue Students', value: String(data.summary.overdueCount) },
+      ],
+      sections: [{
+        cols: [
+          { label: 'Student Name', key: 'name', width: '140px' },
+          { label: 'ID', key: 'id', width: '90px' },
+          { label: 'Course', key: 'course', width: '75px' },
+          { label: 'Total Fees', key: 'fees', align: 'right', width: '80px' },
+          { label: 'Paid', key: 'paid', align: 'right', width: '80px' },
+          { label: 'Outstanding', key: 'outstanding', align: 'right', width: '80px' },
+          { label: 'Days Overdue', key: 'days', align: 'center', width: '60px' },
+          { label: 'Status', key: 'status', width: '55px' },
+        ],
+        rows: data.items.map(s => ({
+          __rowClass: s.daysOverdue > 30 ? 'row-overdue' : '',
+          name: s.name, id: s.studentId, course: s.courseCode,
+          fees: fmt(s.totalFees), paid: fmt(s.totalPaid), outstanding: fmt(s.outstanding),
+          days: s.daysOverdue > 0 ? `${s.daysOverdue}d` : '—',
+          status: s.daysOverdue > 30 ? 'Overdue' : 'Pending',
+        })),
+      }],
+    })
+  }
+
   const statusBadge = (status: string, days: number) => {
     if (days > 30) return <Badge variant="outline" className="text-[10px] bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:text-rose-400 dark:border-rose-800">Overdue</Badge>
     return <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800">Pending</Badge>
@@ -1536,7 +1912,7 @@ function OutstandingPaymentsView({ onBack }: { onBack: () => void }) {
     <div className="space-y-6">
       <PrintHeader title="Outstanding Payments Report" />
       <ReportPageHeader title={card.title} description={card.description} icon={card.icon} colorClass={card.color} bgColor={card.bgColor} onBack={onBack}>
-        <ExportBar onCSV={() => exportToCSV(csvData(), 'MIBAM_OutstandingPayments')} onExcel={() => exportToExcel(csvData(), 'MIBAM_OutstandingPayments')} onPrint={() => window.print()} loading={loading} />
+        <ExportBar onCSV={() => exportToCSV(csvData(), 'MIBAM_OutstandingPayments')} onExcel={() => exportToExcel(csvData(), 'MIBAM_OutstandingPayments')} onPrint={handlePDF} loading={loading} />
       </ReportPageHeader>
 
       {/* Filters */}

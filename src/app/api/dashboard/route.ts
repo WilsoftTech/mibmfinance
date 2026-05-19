@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
     const feesCollectedGrowth = prevRevenue > 0 ? ((monthlyRevenue - prevRevenue) / prevRevenue) * 100 : 0;
 
     // Chart data: Monthly income vs expenses (last 12 months)
-    const monthlyChartData = [];
+    const monthlyChartData: { month: string; income: number; expenses: number }[] = [];
     for (let i = 11; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const start = new Date(d.getFullYear(), d.getMonth(), 1);

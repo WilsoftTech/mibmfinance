@@ -79,16 +79,30 @@ function getDateRange(period: string, dateStr?: string) {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const type = searchParams.get('type') || 'cash-flow'; // student-balances, fees-collection, expense, cash-flow
-    const period = searchParams.get('period') || 'monthly'; // daily, weekly, monthly, annual
+    const type = searchParams.get('type') || 'cash-flow';
+    const period = searchParams.get('period') || 'monthly';
     const date = searchParams.get('date') || '';
+    const dateFromStr = searchParams.get('dateFrom') || '';
+    const dateToStr = searchParams.get('dateTo') || '';
 
-    const dateRange = getDateRange(period, date);
-    if (!dateRange) {
-      return errorResponse('Invalid period or date. Period must be: daily, weekly, monthly, annual');
+    let start: Date, end: Date, label: string;
+
+    // Support explicit dateFrom/dateTo for custom ranges
+    if (dateFromStr && dateToStr) {
+      start = new Date(dateFromStr);
+      end = new Date(dateToStr);
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
+      label = `${start.toLocaleDateString()} – ${end.toLocaleDateString()}`;
+    } else {
+      const dateRange = getDateRange(period, date);
+      if (!dateRange) {
+        return errorResponse('Invalid period or date. Period must be: daily, weekly, monthly, annual');
+      }
+      start = dateRange.start;
+      end = dateRange.end;
+      label = dateRange.label;
     }
-
-    const { start, end, label } = dateRange;
 
     switch (type) {
       case 'student-balances': {

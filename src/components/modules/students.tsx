@@ -100,7 +100,7 @@ interface StudentWithBalance extends Student {
   _count?: { payments: number }
 }
 
-interface StudentDetail extends Student {
+interface StudentDetail extends Omit<Student, 'payments'> {
   financialSummary: {
     expectedTotal: number
     totalPaid: number
@@ -173,6 +173,9 @@ export function StudentsModule() {
   const [showFormDialog, setShowFormDialog] = useState(false)
   const [editingStudent, setEditingStudent] = useState<StudentWithBalance | null>(null)
   const [deleteStudent, setDeleteStudent] = useState<StudentWithBalance | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  const triggerRefresh = () => setRefreshKey(k => k + 1)
 
   const handleViewStudent = (id: string) => {
     setSelectedStudentId(id)
@@ -215,6 +218,7 @@ export function StudentsModule() {
               onAddStudent={handleAddStudent}
               onEditStudent={handleEditStudent}
               onDeleteStudent={setDeleteStudent}
+              refreshKey={refreshKey}
             />
           </motion.div>
         ) : (
@@ -238,6 +242,7 @@ export function StudentsModule() {
         open={showFormDialog}
         onOpenChange={handleFormClose}
         editingStudent={editingStudent}
+        onSuccess={triggerRefresh}
       />
 
       {/* Delete Confirmation */}
@@ -245,6 +250,7 @@ export function StudentsModule() {
         student={deleteStudent}
         open={!!deleteStudent}
         onOpenChange={(open) => { if (!open) setDeleteStudent(null) }}
+        onSuccess={triggerRefresh}
       />
     </div>
   )
@@ -259,9 +265,10 @@ interface StudentListViewProps {
   onAddStudent: () => void
   onEditStudent: (student: StudentWithBalance) => void
   onDeleteStudent: (student: StudentWithBalance) => void
+  refreshKey?: number
 }
 
-function StudentListView({ onViewStudent, onAddStudent, onEditStudent, onDeleteStudent }: StudentListViewProps) {
+function StudentListView({ onViewStudent, onAddStudent, onEditStudent, onDeleteStudent, refreshKey }: StudentListViewProps) {
 
   // Data state
   const [students, setStudents] = useState<StudentWithBalance[]>([])
@@ -328,7 +335,7 @@ function StudentListView({ onViewStudent, onAddStudent, onEditStudent, onDeleteS
     } finally {
       setLoading(false)
     }
-  }, [searchQuery, filterCourse, filterProgramType, filterStatus, filterGender, currentPage])
+  }, [searchQuery, filterCourse, filterProgramType, filterStatus, filterGender, currentPage, refreshKey])
 
   useEffect(() => {
     fetchStudents()
@@ -1102,9 +1109,11 @@ interface StudentFormDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   editingStudent: StudentWithBalance | null
+  onSuccess?: () => void
 }
 
-function StudentFormDialog({ open, onOpenChange, editingStudent }: StudentFormDialogProps) {
+function StudentFormDialog({ open, onOpenChange, editingStudent, onSuccess }: StudentFormDialogProps) {
+  const { currentUser } = useAppStore()
   const [formData, setFormData] = useState<FormData>(initialFormData)
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({})
   const [submitting, setSubmitting] = useState(false)
@@ -1208,8 +1217,8 @@ function StudentFormDialog({ open, onOpenChange, editingStudent }: StudentFormDi
         guardianName: formData.guardianName || null,
         guardianContact: formData.guardianContact || null,
         address: formData.address || null,
-        createdBy: '1', // default admin user
-        updatedBy: '1',
+        createdBy: currentUser?.id,
+        updatedBy: currentUser?.id,
       }
 
       if (editingStudent) {
@@ -1223,6 +1232,7 @@ function StudentFormDialog({ open, onOpenChange, editingStudent }: StudentFormDi
         if (data.success) {
           toast.success('Student updated successfully')
           onOpenChange(false)
+          onSuccess?.()
         } else {
           toast.error(data.error || 'Failed to update student')
         }
@@ -1237,6 +1247,7 @@ function StudentFormDialog({ open, onOpenChange, editingStudent }: StudentFormDi
         if (data.success) {
           toast.success('Student created successfully')
           onOpenChange(false)
+          onSuccess?.()
         } else {
           toast.error(data.error || 'Failed to create student')
         }
@@ -1520,9 +1531,10 @@ interface DeleteConfirmDialogProps {
   student: StudentWithBalance | null
   open: boolean
   onOpenChange: (open: boolean) => void
+  onSuccess?: () => void
 }
 
-function DeleteConfirmDialog({ student, open, onOpenChange }: DeleteConfirmDialogProps) {
+function DeleteConfirmDialog({ student, open, onOpenChange, onSuccess }: DeleteConfirmDialogProps) {
   const [deleting, setDeleting] = useState(false)
 
   const handleDelete = async () => {
@@ -1534,6 +1546,7 @@ function DeleteConfirmDialog({ student, open, onOpenChange }: DeleteConfirmDialo
       if (data.success) {
         toast.success('Student deleted successfully')
         onOpenChange(false)
+        onSuccess?.()
       } else {
         toast.error(data.error || 'Failed to delete student')
       }

@@ -140,7 +140,7 @@ export function NotificationPanel() {
             id: `real-pay-${i}`,
             type: 'payment_received' as NotificationType,
             title: 'Payment Received',
-            description: `Payment of UGX ${(p.amount as number).toLocaleString()} received from ${p.student?.name || 'a student'}`,
+            description: `Payment of UGX ${(p.amount as number).toLocaleString()} received from ${(p.student as { name?: string } | null)?.name || 'a student'}`,
             timestamp: p.receivedAt as string || p.createdAt as string || new Date().toISOString(),
             read: i > 0,
           }))

@@ -6,7 +6,7 @@ export function successResponse(data: unknown, status = 200) {
 
 export function errorResponse(message: string, status = 400, details?: unknown) {
   return NextResponse.json(
-    { success: false, error: message, ...(details && { details }) },
+    { success: false, error: message, ...(details ? { details } : {}) },
     { status }
   );
 }

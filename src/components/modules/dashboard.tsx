@@ -182,7 +182,7 @@ const itemVariants = {
   visible: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] },
+    transition: { duration: 0.4, ease: 'easeOut' as const },
   },
 }
 
@@ -514,7 +514,7 @@ export function DashboardPage() {
             <AlertCircle className="h-12 w-12 text-rose-500 mb-4" />
             <p className="text-lg font-medium text-foreground mb-1">Failed to load dashboard</p>
             <p className="text-sm text-muted-foreground mb-4">{error}</p>
-            <Button onClick={fetchDashboard} variant="outline" className="gap-2">
+            <Button onClick={() => fetchDashboard()} variant="outline" className="gap-2">
               <RefreshCw className="h-4 w-4" />
               Retry
             </Button>

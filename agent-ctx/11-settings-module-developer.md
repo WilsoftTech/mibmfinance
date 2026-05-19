@@ -32,6 +32,6 @@ Created the complete Settings module for MIBAM Finance Management System with al
 - Fixed students.tsx: setCurrentPage from useAppStore conflicted with local useState → removed store import from StudentListView
 
 ## Verification
-- `bun run lint` passes cleanly (0 errors)
+- `npm run lint` passes cleanly (0 errors)
 - All API endpoints tested and returning correct data
 - Dev server compiles successfully (HTTP 200)

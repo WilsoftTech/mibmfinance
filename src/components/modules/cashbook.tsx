@@ -184,7 +184,7 @@ const itemVariants = {
   visible: {
     opacity: 1,
     y: 0,
-    transition: { duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] },
+    transition: { duration: 0.4, ease: 'easeOut' as const },
   },
 }
 
@@ -1417,7 +1417,7 @@ export function CashbookModule() {
   // Export handlers
   const buildTimelineExport = () => {
     if (!data) return []
-    const allEntries: (IncomeTransaction & ExpenseTransaction & { type: string })[] = [
+    const allEntries: ((IncomeTransaction | ExpenseTransaction) & { type: string })[] = [
       ...data.income.transactions.map((t) => ({ ...t, type: 'Income' })),
       ...data.expenses.transactions.map((t) => ({ ...t, type: 'Expense' })),
     ]

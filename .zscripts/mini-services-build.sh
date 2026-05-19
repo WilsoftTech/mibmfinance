@@ -43,12 +43,16 @@ main() {
             echo ""
             echo "📦 正在构建: $project_name..."
             
-            # 使用 bun build CLI 构建
+            # 使用 esbuild 构建 (如果没有 bun)
+            # 或者如果已经安装了 bun，可以保留 bun build 但目标设为 node
+            # 这里我们尝试使用 npx esbuild
             output_file="$DIST_DIR/mini-service-$project_name.js"
             
-            if bun build "$entry_path" \
-                --outfile "$output_file" \
-                --target bun \
+            if npx esbuild "$entry_path" \
+                --bundle \
+                --outfile="$output_file" \
+                --platform=node \
+                --target=node20 \
                 --minify; then
                 echo "✅ $project_name 构建成功 -> $output_file"
                 success_count=$((success_count + 1))

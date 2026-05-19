@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import type { PageType, User } from '@/lib/types'
 
 interface AppState {
@@ -18,6 +19,10 @@ interface AppState {
   currentUser: User | null
   setCurrentUser: (user: User | null) => void
   logout: () => void
+
+  // Hydration — true once localStorage values are loaded
+  _hasHydrated: boolean
+  setHasHydrated: (val: boolean) => void
 
   // Search
   searchQuery: string
@@ -44,60 +49,71 @@ interface AppState {
   setQuickStats: (stats: AppState['quickStats']) => void
 }
 
-export const useAppStore = create<AppState>((set) => ({
-  // Navigation
-  currentPage: 'dashboard',
-  setCurrentPage: (page) => set((state) => {
-    const updatedRecent = [page, ...state.recentPages.filter(p => p !== page)].slice(0, 5)
-    return { currentPage: page, recentPages: updatedRecent }
-  }),
-  recentPages: [],
-  addToRecentPages: (page) => set((state) => {
-    const updatedRecent = [page, ...state.recentPages.filter(p => p !== page)].slice(0, 5)
-    return { recentPages: updatedRecent }
-  }),
+export const useAppStore = create<AppState>()(
+  persist(
+    (set) => ({
+      // Navigation
+      currentPage: 'dashboard',
+      setCurrentPage: (page) => set((state) => {
+        const updatedRecent = [page, ...state.recentPages.filter(p => p !== page)].slice(0, 5)
+        return { currentPage: page, recentPages: updatedRecent }
+      }),
+      recentPages: [],
+      addToRecentPages: (page) => set((state) => {
+        const updatedRecent = [page, ...state.recentPages.filter(p => p !== page)].slice(0, 5)
+        return { recentPages: updatedRecent }
+      }),
 
-  // Sidebar
-  sidebarCollapsed: false,
-  mobileSidebarOpen: false,
-  toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
-  setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
+      // Sidebar
+      sidebarCollapsed: false,
+      mobileSidebarOpen: false,
+      toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+      setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
 
-  // User
-  currentUser: {
-    id: '1',
-    email: 'admin@mibam.ac.ug',
-    name: 'Turyahabwe Joshua',
-    role: 'super_admin',
-    avatar: null,
-    active: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  setCurrentUser: (user) => set({ currentUser: user }),
-  logout: () => set({ currentUser: null, currentPage: 'dashboard' }),
+      // User — starts null; restored from localStorage on hydration
+      currentUser: null,
+      setCurrentUser: (user) => set({ currentUser: user }),
+      logout: () => set({ currentUser: null, currentPage: 'dashboard' }),
 
-  // Search
-  searchQuery: '',
-  setSearchQuery: (query) => set({ searchQuery: query }),
-  searchOpen: false,
-  setSearchOpen: (open) => set({ searchOpen: open }),
+      // Hydration
+      _hasHydrated: false,
+      setHasHydrated: (val) => set({ _hasHydrated: val }),
 
-  // Command Palette
-  commandPaletteOpen: false,
-  setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
-  toggleCommandPalette: () => set((state) => ({ commandPaletteOpen: !state.commandPaletteOpen })),
+      // Search
+      searchQuery: '',
+      setSearchQuery: (query) => set({ searchQuery: query }),
+      searchOpen: false,
+      setSearchOpen: (open) => set({ searchOpen: open }),
 
-  // Notifications
-  notifications: 3,
-  setNotifications: (count) => set({ notifications: count }),
+      // Command Palette
+      commandPaletteOpen: false,
+      setCommandPaletteOpen: (open) => set({ commandPaletteOpen: open }),
+      toggleCommandPalette: () => set((state) => ({ commandPaletteOpen: !state.commandPaletteOpen })),
 
-  // Quick Stats
-  quickStats: {
-    totalStudents: 0,
-    todayCollections: 0,
-    pendingExpenses: 0,
-    netBalance: 0,
-  },
-  setQuickStats: (stats) => set({ quickStats: stats }),
-}))
+      // Notifications
+      notifications: 0,
+      setNotifications: (count) => set({ notifications: count }),
+
+      // Quick Stats
+      quickStats: {
+        totalStudents: 0,
+        todayCollections: 0,
+        pendingExpenses: 0,
+        netBalance: 0,
+      },
+      setQuickStats: (stats) => set({ quickStats: stats }),
+    }),
+    {
+      name: 'mibam-app-storage',
+      // Only persist auth + UI preferences; ephemeral state is always reset
+      partialize: (state) => ({
+        currentUser: state.currentUser,
+        sidebarCollapsed: state.sidebarCollapsed,
+        currentPage: state.currentPage,
+      }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true)
+      },
+    }
+  )
+)

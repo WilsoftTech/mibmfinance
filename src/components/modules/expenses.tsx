@@ -236,7 +236,7 @@ function MonthlyTrendChart({ data }: { data: { month: string; amount: number }[]
             />
             <ChartTooltip
               content={<ChartTooltipContent
-                formatter={(value: number) => formatCurrency(value)}
+                formatter={(value) => formatCurrency(value as number)}
               />}
             />
             <Bar

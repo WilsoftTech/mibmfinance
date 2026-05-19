@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { useTheme } from 'next-themes'
+import { useRouter } from 'next/navigation'
 import {
   Search,
   Bell,
@@ -33,7 +34,13 @@ import { NotificationPanel } from '@/components/layout/notification-panel'
 export function Header() {
   const { currentUser, setMobileSidebarOpen, notifications, setCurrentPage, logout } = useAppStore()
   const { theme, setTheme } = useTheme()
+  const router = useRouter()
   const [mounted, setMounted] = React.useState(false)
+
+  const handleLogout = () => {
+    logout()
+    router.push('/login')
+  }
 
   React.useEffect(() => {
     setMounted(true)
@@ -147,7 +154,7 @@ export function Header() {
                 <span>Settings</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer text-red-600 dark:text-red-400" onClick={logout}>
+              <DropdownMenuItem className="cursor-pointer text-red-600 dark:text-red-400" onClick={handleLogout}>
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>Log out</span>
               </DropdownMenuItem>

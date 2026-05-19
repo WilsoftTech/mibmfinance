@@ -33,7 +33,7 @@ export async function PUT(request: NextRequest) {
       return errorResponse('Settings object is required with key-value pairs');
     }
 
-    const results = [];
+    const results: { id: string; key: string; value: string; createdAt: Date; updatedAt: Date }[] = [];
 
     for (const [key, value] of Object.entries(settings)) {
       const stringValue = typeof value === 'string' ? value : JSON.stringify(value);

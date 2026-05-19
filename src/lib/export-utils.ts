@@ -117,7 +117,7 @@ export function generatePDFTable(
 ): string {
   if (!data.length) return ''
 
-  const cols = options?.headers || Object.keys(data[0]).map((key) => ({ key, label: key }))
+  const cols: { key: string; label: string; align?: string }[] = options?.headers || Object.keys(data[0]).map((key) => ({ key, label: key }))
   const currencyCols = options?.currencyColumns || []
   const dateCols = options?.dateColumns || []
 

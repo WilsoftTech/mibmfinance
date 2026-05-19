@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   keywords: ["MIBAM", "finance", "school management", "payments", "Uganda", "education"],
   authors: [{ name: "MIBAM ICT Department" }],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "/logo.svg",
   },
   openGraph: {
     title: "MIBAM Finance System",

@@ -163,7 +163,7 @@ function numberToWords(num: number): string {
 // ============================================================
 // Student with balance type (from API)
 // ============================================================
-interface StudentWithBalance extends Student {
+interface StudentWithBalance extends Omit<Student, 'course' | 'academicYear' | 'semester'> {
   totalPaid: number
   balance: number
   course: {
@@ -181,7 +181,7 @@ interface StudentWithBalance extends Student {
 // ============================================================
 // Payment with student (from API)
 // ============================================================
-interface PaymentWithStudent extends Payment {
+interface PaymentWithStudent extends Omit<Payment, 'student' | 'receivedByUser'> {
   student: {
     id: string
     studentId: string
@@ -361,6 +361,313 @@ function EmptyState({ hasFilters }: { hasFilters: boolean }) {
 // ============================================================
 // Sub-Component: Receipt View
 // ============================================================
+// ============================================================
+// Receipt HTML generator – fully self-contained, no external CSS
+// ============================================================
+function buildReceiptHTML(
+  payment: PaymentWithStudent,
+  studentFinancialSummary: ReceiptData['studentFinancialSummary'] | undefined,
+  autoprint: boolean
+): string {
+  const student = payment.student
+  const receivedDate = new Date(payment.receivedAt)
+  const dateStr = receivedDate.toLocaleDateString('en-UG', {
+    day: 'numeric', month: 'long', year: 'numeric',
+  })
+  const timeStr = receivedDate.toLocaleTimeString('en-US', {
+    hour: '2-digit', minute: '2-digit',
+  })
+  const now = new Date()
+  const generatedStr = now.toLocaleDateString('en-UG', {
+    day: 'numeric', month: 'long', year: 'numeric',
+  }) + ' ' + now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+
+  const methodLabel =
+    payment.paymentMethod === 'cash' ? 'Cash'
+    : payment.paymentMethod === 'bank' ? 'Bank Transfer'
+    : 'Mobile Money'
+  const methodBadgeStyle =
+    payment.paymentMethod === 'bank'
+      ? 'background:#ccfbf1;color:#0f766e;border:1px solid #5eead4;'
+      : payment.paymentMethod === 'mobile_money'
+      ? 'background:#dcfce7;color:#166534;border:1px solid #86efac;'
+      : 'background:#fef3c7;color:#92400e;border:1px solid #fcd34d;'
+
+  const fmt = (n: number) =>
+    new Intl.NumberFormat('en-UG', {
+      style: 'currency', currency: 'UGX',
+      minimumFractionDigits: 0, maximumFractionDigits: 0,
+    }).format(n)
+
+  const amountWords = numberToWords(payment.amount)
+
+  const optionalRows = [
+    payment.reference
+      ? `<div class="field-row"><span class="field-label">Reference:</span><span class="field-value" style="font-family:'Courier New',monospace;">${payment.reference}</span></div>`
+      : '',
+    payment.semester
+      ? `<div class="field-row"><span class="field-label">Semester:</span><span class="field-value">${payment.semester}</span></div>`
+      : '',
+    payment.academicYear
+      ? `<div class="field-row"><span class="field-label">Academic Year:</span><span class="field-value">${payment.academicYear}</span></div>`
+      : '',
+    payment.notes
+      ? `<div class="field-row"><span class="field-label">Notes:</span><span class="field-value" style="max-width:55%;text-align:right;word-break:break-word;">${payment.notes}</span></div>`
+      : '',
+  ].join('')
+
+  const balanceSection = studentFinancialSummary
+    ? `<div style="display:flex;justify-content:space-between;align-items:center;background:#fef3c7;border:1.5px solid #d97706;border-radius:8px;padding:10px 14px;margin:14px 0;">
+        <span style="font-size:13px;font-weight:600;color:#92400e;">Balance Remaining:</span>
+        <span style="font-size:13px;font-weight:700;color:#92400e;">${fmt(studentFinancialSummary.balance)}</span>
+      </div>`
+    : ''
+
+  const autoPrintScript = autoprint
+    ? `<script>window.addEventListener('load',function(){setTimeout(function(){window.print();},400);});</script>`
+    : ''
+
+  const totalFees = studentFinancialSummary?.expectedTotal ?? 0
+  const prevPaid = studentFinancialSummary
+    ? Math.max(0, studentFinancialSummary.totalPaid - payment.amount)
+    : 0
+  const balance = studentFinancialSummary?.balance ?? 0
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Receipt – ${payment.receiptNumber}</title>
+  ${autoPrintScript}
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    @page{size:A4;margin:12mm 14mm;}
+    body{
+      font-family:'Segoe UI',Calibri,Arial,sans-serif;
+      background:#f0f2f5;
+      color:#1a1a2e;
+      font-size:13px;
+      line-height:1.5;
+    }
+    .page-wrapper{max-width:680px;margin:24px auto;}
+    .doc{background:#fff;box-shadow:0 2px 20px rgba(0,0,0,.12);}
+
+    /* ── Top banner ── */
+    .banner{height:10px;background:#3b5998;}
+
+    /* ── Company header ── */
+    .company-header{padding:22px 32px 18px;}
+    .company-name{font-size:16px;font-weight:700;color:#1a1a2e;letter-spacing:.2px;margin-bottom:4px;}
+    .company-addr{font-size:12px;color:#555;line-height:1.6;}
+
+    /* ── Info grid ── */
+    .info-grid{
+      display:grid;grid-template-columns:1fr 1fr;
+      gap:0;padding:16px 32px 20px;
+      border-top:1px solid #e8eaf0;
+    }
+    .info-col{}
+    .info-col-right{text-align:right;}
+    .info-label{
+      font-size:10px;font-weight:700;text-transform:uppercase;
+      letter-spacing:.8px;color:#3b5998;margin-bottom:6px;
+    }
+    .info-val{font-size:13px;color:#1a1a2e;line-height:1.65;}
+    .info-val strong{font-weight:600;}
+    .meta-table{width:100%;border-collapse:collapse;}
+    .meta-table td{padding:2px 0;font-size:12.5px;color:#1a1a2e;}
+    .meta-table td:first-child{font-weight:700;text-transform:uppercase;font-size:11px;letter-spacing:.5px;white-space:nowrap;padding-right:16px;}
+    .meta-table td:last-child{text-align:right;}
+
+    /* ── Divider ── */
+    .divider{border:none;border-top:1.5px solid #d0d4e0;margin:0 32px;}
+
+    /* ── Total row ── */
+    .total-row{
+      display:flex;justify-content:space-between;align-items:baseline;
+      padding:18px 32px;
+    }
+    .total-label{font-size:22px;font-weight:700;color:#1a1a2e;}
+    .total-amount{font-size:22px;font-weight:700;color:#1a1a2e;}
+    .amount-words-line{
+      padding:0 32px 14px;font-size:11.5px;color:#777;font-style:italic;
+    }
+
+    /* ── Line items ── */
+    .items-section{padding:0 32px 20px;}
+    .items-table{width:100%;border-collapse:collapse;margin-top:8px;}
+    .items-table thead tr{border-bottom:2px solid #1a1a2e;}
+    .items-table thead th{
+      font-size:11px;font-weight:700;text-transform:uppercase;
+      letter-spacing:.5px;padding:6px 8px 8px;color:#1a1a2e;text-align:left;
+    }
+    .items-table thead th:last-child{text-align:right;}
+    .items-table tbody tr{border-bottom:1px solid #eaecf2;}
+    .items-table tbody td{padding:9px 8px;font-size:13px;color:#333;vertical-align:middle;}
+    .items-table tbody td:last-child{text-align:right;font-weight:500;}
+    .items-table tbody tr:last-child{border-bottom:none;}
+    .items-table tfoot td{padding:7px 8px;font-size:12.5px;color:#333;text-align:right;}
+    .items-table tfoot tr.balance-row td{
+      font-weight:700;font-size:13px;
+      background:#fef3c7;color:#92400e;
+      border-top:2px solid #fcd34d;
+      border-bottom:2px solid #fcd34d;
+    }
+    .items-table tfoot td:first-child{text-align:left;}
+    .badge{
+      display:inline-block;padding:2px 10px;border-radius:20px;
+      font-size:11px;font-weight:600;
+    }
+
+    /* ── Bottom section ── */
+    .bottom{padding:16px 32px 24px;display:flex;justify-content:space-between;align-items:flex-end;}
+    .received-block{font-size:12px;color:#555;}
+    .received-name{font-size:13px;font-weight:600;color:#1a1a2e;margin-top:2px;}
+    .sig-area{text-align:right;}
+    .sig-line{width:180px;border-top:1.5px solid #999;margin-left:auto;margin-bottom:5px;}
+    .sig-label{font-size:11px;color:#888;}
+
+    /* ── Footer ── */
+    .doc-footer{
+      border-top:1px solid #e8eaf0;padding:12px 32px;
+      text-align:center;font-size:11px;color:#999;line-height:1.7;
+    }
+
+    /* ── Print controls ── */
+    .print-controls{text-align:center;padding:20px;background:#f0f2f5;}
+    .print-btn{
+      padding:11px 28px;background:#3b5998;color:#fff;border:none;border-radius:6px;
+      font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;
+    }
+    .print-hint{font-size:12px;color:#777;margin-top:10px;}
+
+    @media print{
+      body{background:#fff;}
+      .page-wrapper{margin:0;max-width:100%;}
+      .print-controls{display:none;}
+      .doc{box-shadow:none;}
+      .banner{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+      .items-table tfoot tr.balance-row td{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    }
+  </style>
+</head>
+<body>
+<div class="page-wrapper">
+<div class="doc">
+
+  <!-- Blue banner -->
+  <div class="banner"></div>
+
+  <!-- Institution header -->
+  <div class="company-header">
+    <div class="company-name">${MIBAM_INFO.name}</div>
+    <div class="company-addr">
+      ${MIBAM_INFO.address}<br>
+      Tel: ${MIBAM_INFO.phone} &nbsp;&bull;&nbsp; Email: ${MIBAM_INFO.email}
+    </div>
+  </div>
+
+  <!-- Info grid: BILL TO left | Receipt meta right -->
+  <div class="info-grid">
+    <div class="info-col">
+      <div class="info-label">Bill To</div>
+      <div class="info-val">
+        <strong>${student.firstName} ${student.lastName}</strong><br>
+        Student ID: ${student.studentId}<br>
+        ${student.course ? `Programme: ${student.course.name} (${student.course.code})` : ''}
+        ${payment.academicYear ? `<br>Academic Year: ${payment.academicYear}` : ''}
+        ${payment.semester ? `<br>Semester: ${payment.semester}` : ''}
+      </div>
+    </div>
+    <div class="info-col info-col-right">
+      <table class="meta-table">
+        <tbody>
+          <tr><td>Receipt #</td><td><strong>${payment.receiptNumber}</strong></td></tr>
+          <tr><td>Receipt Date</td><td>${dateStr}</td></tr>
+          <tr><td>Time</td><td>${timeStr}</td></tr>
+          <tr><td>Method</td><td><span class="badge" style="${methodBadgeStyle}">${methodLabel}</span></td></tr>
+          ${payment.reference ? `<tr><td>Reference</td><td style="font-family:'Courier New',monospace;font-size:11.5px;">${payment.reference}</td></tr>` : ''}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- Amount total -->
+  <div class="total-row">
+    <span class="total-label">Amount Paid</span>
+    <span class="total-amount">${fmt(payment.amount)}</span>
+  </div>
+  <div class="amount-words-line">${amountWords}</div>
+
+  <hr class="divider">
+
+  <!-- Line items table -->
+  <div class="items-section">
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th style="width:60%">Description</th>
+          <th>Amount (UGX)</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${student.course ? `<tr>
+          <td>Total Programme Fees &mdash; ${student.course.name}</td>
+          <td>${totalFees > 0 ? fmt(totalFees) : '—'}</td>
+        </tr>` : ''}
+        ${prevPaid > 0 ? `<tr>
+          <td>Less: Previously Paid</td>
+          <td>(${fmt(prevPaid)})</td>
+        </tr>` : ''}
+        <tr style="background:#f7f8fc;">
+          <td><strong>This Payment</strong></td>
+          <td><strong>${fmt(payment.amount)}</strong></td>
+        </tr>
+        ${payment.notes ? `<tr><td colspan="2" style="font-size:11.5px;color:#666;font-style:italic;">Note: ${payment.notes}</td></tr>` : ''}
+      </tbody>
+      <tfoot>
+        ${studentFinancialSummary ? `<tr class="balance-row">
+          <td>Balance Remaining</td>
+          <td>${fmt(balance)}</td>
+        </tr>` : ''}
+      </tfoot>
+    </table>
+  </div>
+
+  <!-- Received by + Signature -->
+  <div class="bottom">
+    <div class="received-block">
+      Received by:<br>
+      <span class="received-name">${payment.receivedByUser?.name || 'N/A'}</span><br>
+      <span style="font-size:11px;color:#999;">${MIBAM_INFO.shortName} Finance Office</span>
+    </div>
+    <div class="sig-area">
+      <div class="sig-line"></div>
+      <div class="sig-label">Authorised Signature</div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="doc-footer">
+    This is an official receipt. Please retain for your records.<br>
+    Generated on ${generatedStr} &bull; ${MIBAM_INFO.name}
+  </div>
+
+</div>
+
+<!-- Print controls (hidden during print) -->
+<div class="print-controls">
+  <button class="print-btn" onclick="window.print()">&#128438;&nbsp; Print / Save as PDF</button>
+  <div class="print-hint">Select <strong>"Save as PDF"</strong> in the print dialog to download.</div>
+</div>
+</div>
+</body>
+</html>`
+}
+
 function ReceiptView({
   receiptData,
   onClose,
@@ -370,114 +677,24 @@ function ReceiptView({
 }) {
   const { payment, studentFinancialSummary } = receiptData
   const student = payment.student
-  const receiptRef = useRef<HTMLDivElement>(null)
 
-  const handlePrint = useCallback(() => {
-    const printContent = receiptRef.current
-    if (!printContent) return
-
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) {
-      toast.error('Please allow popups to print receipts')
+  const openReceiptWindow = useCallback((autoprint: boolean) => {
+    const win = window.open('', '_blank')
+    if (!win) {
+      toast.error('Please allow popups to open receipts')
       return
     }
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Receipt - ${payment.receiptNumber}</title>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; color: #1a1a1a; }
-          .receipt { max-width: 700px; margin: 0 auto; border: 2px solid #0d9488; padding: 30px; }
-          .header { text-align: center; border-bottom: 3px double #0d9488; padding-bottom: 15px; margin-bottom: 20px; }
-          .header h1 { font-size: 18px; letter-spacing: 2px; color: #0d9488; margin-bottom: 4px; }
-          .header p { font-size: 11px; color: #666; margin: 2px 0; }
-          .receipt-number { text-align: center; background: #f0fdfa; border: 1px solid #0d9488; padding: 10px; margin: 15px 0; border-radius: 6px; }
-          .receipt-number span { font-size: 22px; font-weight: 700; color: #0d9488; letter-spacing: 1px; }
-          .section { margin-bottom: 15px; }
-          .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #0d9488; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; margin-bottom: 8px; font-weight: 600; }
-          .row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 13px; }
-          .row .label { color: #666; min-width: 140px; }
-          .row .value { font-weight: 500; text-align: right; }
-          .amount-section { background: #f0fdfa; border: 2px solid #0d9488; padding: 15px; margin: 15px 0; border-radius: 8px; text-align: center; }
-          .amount-section .amount { font-size: 28px; font-weight: 700; color: #0d9488; }
-          .amount-section .words { font-size: 12px; color: #555; margin-top: 4px; font-style: italic; }
-          .balance-row { display: flex; justify-content: space-between; padding: 8px 12px; background: #fefce8; border: 1px solid #eab308; border-radius: 6px; margin: 10px 0; font-size: 13px; }
-          .balance-row .label { color: #92400e; }
-          .balance-row .value { font-weight: 700; color: #92400e; }
-          .signature { margin-top: 40px; padding-top: 10px; }
-          .signature-line { width: 200px; border-top: 1px solid #999; margin-bottom: 4px; }
-          .signature-label { font-size: 11px; color: #666; }
-          .footer { text-align: center; margin-top: 25px; padding-top: 15px; border-top: 1px dashed #ccc; }
-          .footer p { font-size: 10px; color: #888; }
-          @media print { body { padding: 0; } .receipt { border-width: 1px; } }
-        </style>
-      </head>
-      <body>
-        ${printContent.innerHTML}
-      </body>
-      </html>
-    `)
-    printWindow.document.close()
-    printWindow.focus()
-    setTimeout(() => {
-      printWindow.print()
-    }, 250)
-  }, [payment.receiptNumber])
-
-  const handleDownloadPDF = useCallback(() => {
-    const printContent = receiptRef.current
-    if (!printContent) return
-
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) {
-      toast.error('Please allow popups to download receipts')
-      return
+    const html = buildReceiptHTML(payment, studentFinancialSummary, autoprint)
+    win.document.open()
+    win.document.write(html)
+    win.document.close()
+    if (!autoprint) {
+      toast.success('Receipt opened — use the Print button inside to save as PDF.')
     }
+  }, [payment, studentFinancialSummary])
 
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Receipt - ${payment.receiptNumber}</title>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; color: #1a1a1a; }
-          .receipt { max-width: 700px; margin: 0 auto; border: 2px solid #0d9488; padding: 30px; }
-          .header { text-align: center; border-bottom: 3px double #0d9488; padding-bottom: 15px; margin-bottom: 20px; }
-          .header h1 { font-size: 18px; letter-spacing: 2px; color: #0d9488; margin-bottom: 4px; }
-          .header p { font-size: 11px; color: #666; margin: 2px 0; }
-          .receipt-number { text-align: center; background: #f0fdfa; border: 1px solid #0d9488; padding: 10px; margin: 15px 0; border-radius: 6px; }
-          .receipt-number span { font-size: 22px; font-weight: 700; color: #0d9488; letter-spacing: 1px; }
-          .section { margin-bottom: 15px; }
-          .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #0d9488; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; margin-bottom: 8px; font-weight: 600; }
-          .row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 13px; }
-          .row .label { color: #666; min-width: 140px; }
-          .row .value { font-weight: 500; text-align: right; }
-          .amount-section { background: #f0fdfa; border: 2px solid #0d9488; padding: 15px; margin: 15px 0; border-radius: 8px; text-align: center; }
-          .amount-section .amount { font-size: 28px; font-weight: 700; color: #0d9488; }
-          .amount-section .words { font-size: 12px; color: #555; margin-top: 4px; font-style: italic; }
-          .balance-row { display: flex; justify-content: space-between; padding: 8px 12px; background: #fefce8; border: 1px solid #eab308; border-radius: 6px; margin: 10px 0; font-size: 13px; }
-          .balance-row .label { color: #92400e; }
-          .balance-row .value { font-weight: 700; color: #92400e; }
-          .signature { margin-top: 40px; padding-top: 10px; }
-          .signature-line { width: 200px; border-top: 1px solid #999; margin-bottom: 4px; }
-          .signature-label { font-size: 11px; color: #666; }
-          .footer { text-align: center; margin-top: 25px; padding-top: 15px; border-top: 1px dashed #ccc; }
-          .footer p { font-size: 10px; color: #888; }
-          @media print { body { padding: 0; } .receipt { border-width: 1px; } }
-        </style>
-      </head>
-      <body>
-        ${printContent.innerHTML}
-      </body>
-      </html>
-    `)
-    printWindow.document.close()
-    toast.success('Receipt opened. Use Ctrl+P (or Cmd+P) to save as PDF.')
-  }, [payment.receiptNumber])
+  const handlePrint = useCallback(() => openReceiptWindow(true), [openReceiptWindow])
+  const handleDownloadPDF = useCallback(() => openReceiptWindow(false), [openReceiptWindow])
 
   return (
     <DialogContent className="sm:max-w-2xl max-h-[90vh] p-0 overflow-hidden" showCloseButton={true}>
@@ -487,7 +704,7 @@ function ReceiptView({
       </DialogHeader>
 
       <ScrollArea className="max-h-[80vh]">
-        <div ref={receiptRef} className="p-6">
+        <div className="p-6">
           {/* Receipt Content */}
           <div className="border-2 border-teal-600 dark:border-teal-500 rounded-lg p-6">
             {/* Header */}
@@ -1280,7 +1497,7 @@ export function PaymentsModule() {
       const allPayments = await fetchAllPaymentsForExport()
       if (allPayments.length === 0) return
 
-      const tableHtml = generatePDFTable(allPayments, {
+      const tableHtml = generatePDFTable(allPayments as unknown as Record<string, unknown>[], {
         headers: [
           { key: 'receiptNumber', label: 'Receipt #' },
           { key: 'studentName', label: 'Student Name' },

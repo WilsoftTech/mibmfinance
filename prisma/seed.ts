@@ -1,5 +1,5 @@
 import { db } from '../src/lib/db';
-import { hash } from 'crypto';
+import type { Student } from '@prisma/client';
 
 async function main() {
   console.log('🌱 Seeding database...');
@@ -172,7 +172,7 @@ async function main() {
   const firstNames = ['Emmanuel', 'Sarah', 'Joshua', 'Patience', 'David', 'Ruth', 'Samuel', 'Doreen', 'Peter', 'Agnes', 'James', 'Blessing', 'John', 'Faith', 'Michael', 'Hope', 'Andrew', 'Grace', 'Thomas', 'Peace', 'Steven', 'Vivian', 'Paul', 'Esther', 'Dan', 'Prossy', 'Ivan', 'Annet', 'Brian', 'Monica', 'Kenneth', 'Catherine', 'Richard', 'Jackie', 'Martin', 'Diana', 'Robert', 'Juliet', 'Frank', 'Brenda'];
   const lastNames = ['Tumusiime', 'Ainembabazi', 'Mugisha', 'Nabimanya', 'Turyakira', 'Aheisibwe', 'Mwesigye', 'Ariho', 'Rukundo', 'Natukunda', 'Baguma', 'Kyomuhangi', 'Oweeka', 'Busingye', 'Byamugisha', 'Tumwebaze', 'Niwebaze', 'Abaho', 'Akampurira', 'Baryaruha', 'Kagurusi', 'Muhwezi', 'Rwakatale', 'Kakuru', 'Mbabazi', 'Tushabomwe', 'Atuheire', 'Basheija', 'Katemba', 'Ninsiima', 'Rukirabashaija', 'Tindyebwa', 'Kyamagero', 'Ahimbisibwe', 'Ntaganzwa', 'Tumuhimbise', 'Byaruhanga', 'Rutahindurwa', 'Bwanika', 'Muhumuza'];
 
-  const students = [];
+  const students: Student[] = [];
   const intakes = ['August 2024', 'January 2025'];
   const genders = ['male', 'female'];
   

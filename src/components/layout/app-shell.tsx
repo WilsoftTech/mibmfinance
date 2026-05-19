@@ -16,6 +16,7 @@ import { CashbookModule } from '@/components/modules/cashbook'
 import { Users, DollarSign, Receipt, Wallet } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import type { PageType } from '@/lib/types'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 // ============================================================
 // Placeholder Pages
@@ -125,8 +126,30 @@ function QuickStatsFooter() {
 // ============================================================
 export function AppShell() {
   const { currentPage, setCurrentPage, setQuickStats } = useAppStore()
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [prevPage, setPrevPage] = useState<PageType>('dashboard')
   const [slideDirection, setSlideDirection] = useState<number>(0)
+
+  // Sync state with URL on mount
+  useEffect(() => {
+    const page = searchParams.get('page') as PageType
+    if (page && pageOrder.includes(page) && page !== currentPage) {
+      setCurrentPage(page)
+    }
+  }, [])
+
+  // Sync URL with state
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    if (currentPage === 'dashboard') {
+      params.delete('page')
+    } else {
+      params.set('page', currentPage)
+    }
+    const query = params.toString()
+    router.push(query ? `?${query}` : '/')
+  }, [currentPage, router, searchParams])
 
   const PageComponent = pageComponents[currentPage] || DashboardPage
 
